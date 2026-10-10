@@ -130,26 +130,32 @@ void Mytest(unsigned char dT_ms)
         initialized = 1;
     }
 
+	OLED_ShowNum(1,1,OrdinalNum,4);
     switch(OrdinalNum)
     {
         case 0:  target_x = 2250u; target_y = 1200u; break; /* (2250,2250) -> (2250,1200) */
         case 10: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
         case 20: target_x = 1200u; target_y = 150u;  break; /* -> (1200,150) */
         case 30: target_x = 150u;  target_y = 1200u; break; /* -> (150,1200) */
-        case 40: target_x = 2250u; target_y = 1200u; break; /* -> (2250,1200) */
-        case 50: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
-        case 60: target_x = 1200u; target_y = 150u;  break; /* -> (1200,150) */
-        case 70: target_x = 150u;  target_y = 1200u; break; /* -> (150,1200) */
-        case 80: target_x = PATH_TARGET_X; target_y = PATH_TARGET_Y; break; /* -> (2250,2250) */
+        case 40: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
+        case 50: target_x = 1200u; target_y = 150u; break; /* -> (1200,150) */
+        case 60: target_x = 150u; target_y = 1200u;  break; /* -> (150,1200) */
+        case 70: target_x = 1200u;  target_y = 2250u; break; /* -> (1200,2250) */
+        case 80: target_x = 1200u; target_y = 150u; break; /* -> (1200,150) */
+        case 90: target_x = 150u; target_y = 1200u;  break; /* -> (150,1200) */
+		
+		
+		
+        case 100: target_x = PATH_TARGET_X; target_y = PATH_TARGET_Y; break; /* -> (2250,2250) */
 
-        case 90:
+        case 110:
             if(!terminal_displayed){
                 OLED_ShowString(1, 1, "PATH DONE");
                 terminal_displayed = 1;
             }
             return;
 
-        case 99:
+        case 119:
             if(!terminal_displayed){
                 OLED_ShowString(1, 1, "PATH ERROR");
                 terminal_displayed = 1;
@@ -157,7 +163,7 @@ void Mytest(unsigned char dT_ms)
             return;
 
         default:
-            OrdinalNum = 99;
+            OrdinalNum = 119;
             return;
     }
 
@@ -166,7 +172,7 @@ void Mytest(unsigned char dT_ms)
                   target_x, target_y,
                   MAX_KEY_POINTS, xpath, ypath);
         if(key_point_num < 2){
-            OrdinalNum = 99;
+            OrdinalNum = 119;
             return;
         }
         path_index = 1;
@@ -177,7 +183,7 @@ void Mytest(unsigned char dT_ms)
     if(path_index < key_point_num){
         if(!translation(xpath[path_index - 1], ypath[path_index - 1],
                         xpath[path_index], ypath[path_index])){
-            OrdinalNum = 99;
+            OrdinalNum = 119;
             return;
         }
 
@@ -189,7 +195,7 @@ void Mytest(unsigned char dT_ms)
     if(path_index >= key_point_num){
         path_ready = 0;
         path_index = 0;
-        if(OrdinalNum == 80) OrdinalNum = 90;
+        if(OrdinalNum == 100) OrdinalNum = 110;
         else                 OrdinalNum += 10;
     }
 }
