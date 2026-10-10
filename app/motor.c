@@ -12,7 +12,7 @@
 #define PULSE_PER_360DEG    17208u     /* 旋转标定：每度脉冲数 —— TODO 待标定！当前为占位值 360度 15800*/
 
 /* 速度 / 加速度（可调） */
-#define MOTOR_SPEED      50    /* 速度 0x07D0；上位机默认 200 已较快 */
+#define MOTOR_SPEED      100    /* 速度 0x07D0；上位机默认 200 已较快 */
 #define MOTOR_ACCEL      200     /* 加速度 0x64 */
 #define MOTOR_SPEED_H    ((uint8_t)(MOTOR_SPEED >> 8))   /* 速度高字节 */
 #define MOTOR_SPEED_L    ((uint8_t)(MOTOR_SPEED & 0xFF)) /* 速度低字节 */

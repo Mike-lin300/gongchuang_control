@@ -9,124 +9,193 @@
 #include "path_config.h"
 
 static u8 dir = PATH_INITIAL_DIR;
-static u8 judge_trans_display_count = 0;
+static u16 judge_trans_display_count = 0;
+static u8 OrdinalNum = 0;
+static u16 route_current_x = PATH_START_X;
+static u16 route_current_y = PATH_START_Y;
 
 #define ABS(x) ((x) < 0 ? -(x) : (x))
 
-void judge_trans(void)
+static u8 judge(void);
+
+/* ç­‰å¾…å››ä¸ªé©±åŠ¨ç”µæœºå…¨éƒ¨åˆ°ä½ã€‚
+ * 0x3A æŸ¥è¯¢çš„å›žåŒ…æ ¼å¼ä¸º [åœ°å€][0x3A][çŠ¶æ€][0x6B]ï¼Œå…¶ä¸­çŠ¶æ€å­—èŠ‚ (Serial_RxPacket[2])
+ * ä¸º 0x03 æ—¶è¡¨ç¤ºè¯¥ç”µæœºå·²åˆ°è¾¾ã€‚æ¯æŸ¥ä¸€ä¸ªåœ°å€ï¼Œå…ˆæ¸…æ ‡å¿—å†å‘æŸ¥è¯¢ï¼Œç„¶åŽé˜»å¡žç­‰å›žåŒ…ï¼Œ
+ * ç¡®è®¤å›žåŒ…åœ°å€ä¸Žæœ¬ç”µæœºä¸€è‡´åŽå†åˆ¤æ–­åˆ°ä½ï¼Œé¿å…æŠŠåˆ«çš„ç”µæœºçš„å›žåŒ…è¯¯åˆ¤æˆè‡ªå·±çš„ã€‚ */
+static u8 judge(void)
 {
-    u8 done1 = 0, done2 = 0, done3 = 0, done4 = 0;
+    u8 judge1 = 0, judge2 = 0, judge3 = 0, judge4 = 0;
     u16 t, guard = 0;
 
-    Serial_RxFlag = 0;
-    Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
-
     while(1){
-        OLED_ShowNum(1,1,done1,1);
-        OLED_ShowNum(2,1,done2,1);
-        OLED_ShowNum(3,1,done3,1);
-        OLED_ShowNum(4,1,done4,1);
-
-        if(done1 == 0){
+        if(judge1 == 0){
             Serial_RxFlag = 0;
-            Serial_RxPacket[0]=Serial_RxPacket[1]=Serial_RxPacket[2]=Serial_RxPacket[3]=0;
+            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
             Serial_SendByte(0x01); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            t = 0;
-            while(t < 50){ if(Serial_GetRxFlag()) break; Delay_ms(1); t++; }
-            if(Serial_RxPacket[0]==0x01 && Serial_RxPacket[1]==0x3A && Serial_RxPacket[2]==0x03)
-                done1 = 1;
+            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
+            if(Serial_RxPacket[0] == 0x01 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
+                judge1 = 1;
+        }
+        Delay_ms(5);
+        if(judge2 == 0){
             Serial_RxFlag = 0;
+            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
+            Serial_SendByte(0x02); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
+            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
+            if(Serial_RxPacket[0] == 0x02 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
+                judge2 = 1;
+        }
+        Delay_ms(5);
+        if(judge3 == 0){
+            Serial_RxFlag = 0;
+            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
+            Serial_SendByte(0x03); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
+            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
+            if(Serial_RxPacket[0] == 0x03 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
+                judge3 = 1;
+        }
+        Delay_ms(5);
+        if(judge4 == 0){
+            Serial_RxFlag = 0;
+            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
+            Serial_SendByte(0x04); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
+            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
+            if(Serial_RxPacket[0] == 0x04 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
+                judge4 = 1;
         }
         Delay_ms(5);
 
-        /* done2 / done3 / done4 ÓÃÍ¬ÑùÄ£°å£¬°ÑµØÖ··Ö±ð»»³É 0x02 / 0x03 / 0x04 */
+        if(judge1 == 1 && judge2 == 1 && judge3 == 1 && judge4 == 1){
+            return 1;
+        }
 
-        if(done1 && done2 && done3 && done4){
-            Serial_RxFlag = 0;
+        OLED_ShowNum(2, 1, judge_trans_display_count++, 5);
+
+        if(++guard > 60000u){   /* å®‰å…¨å…œåº•ï¼Œä»…åœ¨ç”µæœºæ­»æœºæ—¶è§¦å‘ */
+            return 0;
+        }
+    }
+}
+
+static u8 translation(u16 x0, u16 y0, u16 x1, u16 y1)
+{
+    u16 distance;
+
+    if(x1 == x0 && y1 > y0){
+        distance = y1 - y0;
+        if(dir == 2){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 1; }
+        if(dir == 4){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 1; }
+        if(dir == 3) houtui_(distance);
+        else         qianjin_(distance);
+    }else if(x1 == x0 && y1 < y0){
+        distance = y0 - y1;
+        if(dir == 2){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 3; }
+        if(dir == 4){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 3; }
+        if(dir == 3) qianjin_(distance);
+        else         houtui_(distance);
+    }else if(x1 < x0 && y1 == y0){
+        distance = x0 - x1;
+        if(dir == 1){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 2; }
+        else if(dir == 3){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 2; }
+        if(dir == 2) qianjin_(distance);
+        else         houtui_(distance);
+    }else if(x1 > x0 && y1 == y0){
+        distance = x1 - x0;
+        if(dir == 1){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 4; }
+        if(dir == 3){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 4; }
+        if(dir == 4) qianjin_(distance);
+        else         houtui_(distance);
+    }else{
+        return 0;
+    }
+
+    return judge();
+}
+
+void Mytest(unsigned char dT_ms)
+{
+    static u8 initialized = 0;
+    static u8 path_ready = 0;
+    static u8 path_index = 0;
+    static u8 terminal_displayed = 1;
+    static u16 xpath[MAX_KEY_POINTS];
+    static u16 ypath[MAX_KEY_POINTS];
+    u16 target_x, target_y;
+
+    (void)dT_ms;
+
+    if(!initialized){
+        path_planner_init();
+        motor_enable_all();
+        initialized = 1;
+    }
+
+    switch(OrdinalNum)
+    {
+        case 0:  target_x = 2250u; target_y = 1200u; break; /* (2250,2250) -> (2250,1200) */
+        case 10: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
+        case 20: target_x = 1200u; target_y = 150u;  break; /* -> (1200,150) */
+        case 30: target_x = 150u;  target_y = 1200u; break; /* -> (150,1200) */
+        case 40: target_x = 2250u; target_y = 1200u; break; /* -> (2250,1200) */
+        case 50: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
+        case 60: target_x = 1200u; target_y = 150u;  break; /* -> (1200,150) */
+        case 70: target_x = 150u;  target_y = 1200u; break; /* -> (150,1200) */
+        case 80: target_x = PATH_TARGET_X; target_y = PATH_TARGET_Y; break; /* -> (2250,2250) */
+
+        case 90:
+            if(!terminal_displayed){
+                OLED_ShowString(1, 1, "PATH DONE");
+                terminal_displayed = 1;
+            }
+            return;
+
+        case 99:
+            if(!terminal_displayed){
+                OLED_ShowString(1, 1, "PATH ERROR");
+                terminal_displayed = 1;
+            }
+            return;
+
+        default:
+            OrdinalNum = 99;
+            return;
+    }
+
+    if(!path_ready){
+        path_plan(route_current_x, route_current_y,
+                  target_x, target_y,
+                  MAX_KEY_POINTS, xpath, ypath);
+        if(key_point_num < 2){
+            OrdinalNum = 99;
+            return;
+        }
+        path_index = 1;
+        path_ready = 1;
+    }
+
+    /* Execute one obstacle-safe straight segment on each state-machine pass. */
+    if(path_index < key_point_num){
+        if(!translation(xpath[path_index - 1], ypath[path_index - 1],
+                        xpath[path_index], ypath[path_index])){
+            OrdinalNum = 99;
             return;
         }
 
-        if(++guard > 400) break;   /* Ç¿ÍË±£»¤ */
-        OLED_ShowNum(1, 3, judge_trans_display_count++, 5);
-    }
-}
-
-void translation(u16 x0, u16 y0, u16 x1, u16 y1)
-{
-    if(x1 == x0 && y1 > y0){
-        if(dir == 2){ shun_yaw_(90); Delay_ms(1000); judge_trans(); dir = 1; }
-        if(dir == 4){ ni_yaw_(90);   Delay_ms(1000); judge_trans(); dir = 1; }
-        if(dir == 3) houtui_(ABS(y1 - y0));
-        else         qianjin_(ABS(y1 - y0));
-    }else if(x1 == x0 && y1 < y0){
-        if(dir == 2){ ni_yaw_(90);   Delay_ms(1000); judge_trans(); dir = 3; }
-        if(dir == 4){ shun_yaw_(90); Delay_ms(1000); judge_trans(); dir = 3; }
-        if(dir == 3) qianjin_(ABS(y1 - y0));
-        else         houtui_(ABS(y1 - y0));
-    }else if(x1 < x0 && y1 == y0){
-        if(dir == 1){ ni_yaw_(90); Delay_ms(1000); judge_trans(); dir = 2; }
-        else if(dir == 3){ shun_yaw_(90); Delay_ms(1000); judge_trans(); dir = 2; }
-        if(dir == 2) qianjin_(ABS(x1 - x0));
-        else         houtui_(ABS(x1 - x0));
-    }else if(x1 > x0 && y1 == y0){
-        if(dir == 1){ shun_yaw_(90); Delay_ms(1000); judge_trans(); dir = 4; }
-        if(dir == 3){ ni_yaw_(90);   Delay_ms(1000); judge_trans(); dir = 4; }
-        if(dir == 4) qianjin_(ABS(x1 - x0));
-        else         houtui_(ABS(x1 - x0));
+        route_current_x = xpath[path_index];
+        route_current_y = ypath[path_index];
+        path_index++;
     }
 
-    judge_trans();
-}
-void judge_yaw(void)
-{
-    u8 done1 = 0, done2 = 0;
-    u16 t, guard = 0;
-
-    Serial_RxFlag = 0;
-    Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
-
-    while(!(done1 && done2)){
-        OLED_ShowNum(1,1,done1,1);
-        OLED_ShowNum(2,1,done2,1);
-        OLED_ShowHexNum(3,1, Serial_RxPacket[0], 2);
-        OLED_ShowHexNum(3,4, Serial_RxPacket[1], 2);
-        OLED_ShowHexNum(3,7, Serial_RxPacket[2], 2);
-        OLED_ShowHexNum(3,10,Serial_RxPacket[3], 2);
-
-        if(done1 == 0){
-            Serial_RxFlag = 0;
-            Serial_RxPacket[0]=Serial_RxPacket[1]=Serial_RxPacket[2]=Serial_RxPacket[3]=0;
-            Serial_SendByte(0x01); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            t = 0;
-            while(t < 50){ if(Serial_GetRxFlag()) break; Delay_ms(1); t++; }
-            if(Serial_RxPacket[0]==0x01 && Serial_RxPacket[1]==0x3A && Serial_RxPacket[2]==0x03)
-                done1 = 1;
-            Serial_RxFlag = 0;
-        }
-        Delay_ms(5);
-
-        if(done2 == 0){
-            Serial_RxFlag = 0;
-            Serial_RxPacket[0]=Serial_RxPacket[1]=Serial_RxPacket[2]=Serial_RxPacket[3]=0;
-            Serial_SendByte(0x02); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            t = 0;
-            while(t < 50){ if(Serial_GetRxFlag()) break; Delay_ms(1); t++; }
-            if(Serial_RxPacket[0]==0x02 && Serial_RxPacket[1]==0x3A && Serial_RxPacket[2]==0x03)
-                done2 = 1;
-            Serial_RxFlag = 0;
-        }
-        Delay_ms(5);
-
-        if(++guard > 400) break;   /* ´óÔ¼ 44s Ç¿ÍË£¬·ÀÖ¹ËÀÑ­»· */
+    if(path_index >= key_point_num){
+        path_ready = 0;
+        path_index = 0;
+        if(OrdinalNum == 80) OrdinalNum = 90;
+        else                 OrdinalNum += 10;
     }
 }
 
 int main(void)
 {
-    u16 xpath[MAX_KEY_POINTS];
-    u16 ypath[MAX_KEY_POINTS];
-    u8 i;
-
     LED_Init();
     OLED_Init();
     Key_Init();
@@ -134,7 +203,6 @@ int main(void)
 	USART2_Init(115200);
     Delay_ms(200);
 
-	
 //	while (1)
 //	{
 //		USART2_SendByte('A');        // 0x41
@@ -144,63 +212,65 @@ int main(void)
 //		Delay_ms(500);
 //		PC13_Turn();
 //	}
-	uint16_t print_cnt = 0;   // ´òÓ¡·ÖÆµ¼ÆÊý
 
-	USART2_SendByte(0x33);
-	
-	while (1)
-	{
-		uint8_t key = 0;
 
-		/* Ã¿Ô¼ 500ms Í¨¹ý USART2 ´òÓ¡Ò»´Î×´Ì¬ */
-		if (++print_cnt >= 500)
-		{
-			/*
-				int32_t pos_now    = 0;   // µç»úµ±Ç°Î»ÖÃ£¨´Ó´®¿Ú¶Á»Ø£©
-				int32_t pos_memo   = 0;   // ¼Ç×¡µÄÎ»ÖÃ
-				uint8_t pos_dir    = 0;   // ·½ÏòÎ»ÔÝ´æ
-			*/
-			print_cnt = 0;
+//	uint16_t print_cnt = 0;   // ï¿½ï¿½Ó¡ï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½
 
-			USART2_SendString(" now=");
-			USART2_SendInt(pos_now);
-			USART2_SendString(" memo=");
-			USART2_SendInt(pos_memo);
-			USART2_SendString(" dir=");
-			USART2_SendDec(pos_dir);
-			USART2_SendString("\r\n");
-		}
-		Delay_ms(1);
-		
+//	USART2_SendByte(0x33);
+//
+//	while (1)
+//	{
+//		uint8_t key = 0;
 
-		/* ´®¿Ú2Ä£Äâ°´¼ü */
-		if (uart_key_num != 0)
-		{
-			key = uart_key_num;
-			uart_key_num = 0;              // Ïû·Ñµô
-		}
+//		/* Ã¿Ô¼ 500ms Í¨ï¿½ï¿½ USART2 ï¿½ï¿½Ó¡Ò»ï¿½ï¿½×´Ì¬ */
+//		if (++print_cnt >= 500)
+//		{
+//			/*
+//				int32_t pos_now    = 0;   // ï¿½ï¿½ï¿½ï¿½ï¿½Ç°Î»ï¿½Ã£ï¿½ï¿½Ó´ï¿½ï¿½Ú¶ï¿½ï¿½Ø£ï¿½
+//				int32_t pos_memo   = 0;   // ï¿½ï¿½×¡ï¿½ï¿½Î»ï¿½ï¿½
+//				uint8_t pos_dir    = 0;   // ï¿½ï¿½ï¿½ï¿½Î»ï¿½Ý´ï¿½
+//			*/
+//			print_cnt = 0;
 
-		if (key != 0)
-		{
-			if (key == 1)
-			{
-				motor_read_pos();       // ÄÚ²¿¸üÐÂ pos_now ºÍ pos_dir
-				pos_memo = pos_now;     // ¡ï ¼ÇÒäµ±Ç°Î»ÖÃ
-			}
-			else if (key == 2)
-			{
-				motor_set_pos(pos_memo);
-			}
-			else if (key == 3)
-			{
-				pos_memo += 160;         // »ùÓÚ¼ÇÒäÎ»ÖÃÎ¢µ÷
-			}
-			else if (key == 4)
-			{
-				pos_memo -= 160;
-			}
-		}
-	}	
+//			USART2_SendString(" now=");
+//			USART2_SendInt(pos_now);
+//			USART2_SendString(" memo=");
+//			USART2_SendInt(pos_memo);
+//			USART2_SendString(" dir=");
+//			USART2_SendDec(pos_dir);
+//			USART2_SendString("\r\n");
+//		}
+//		Delay_ms(1);
+//
+
+//		/* ï¿½ï¿½ï¿½ï¿½2Ä£ï¿½â°´ï¿½ï¿½ */
+//		if (uart_key_num != 0)
+//		{
+//			key = uart_key_num;
+//			uart_key_num = 0;              // ï¿½ï¿½ï¿½Ñµï¿½
+//		}
+
+//		if (key != 0)
+//		{
+//			if (key == 1)
+//			{
+//				motor_read_pos();       // ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ pos_now ï¿½ï¿½ pos_dir
+//				pos_memo = pos_now;     // ï¿½ï¿½ ï¿½ï¿½ï¿½äµ±Ç°Î»ï¿½ï¿½
+//			}
+//			else if (key == 2)
+//			{
+//				motor_set_pos(pos_memo);
+//			}
+//			else if (key == 3)
+//			{
+//				pos_memo += 160;         // ï¿½ï¿½ï¿½Ú¼ï¿½ï¿½ï¿½Î»ï¿½ï¿½Î¢ï¿½ï¿½
+//			}
+//			else if (key == 4)
+//			{
+//				pos_memo -= 160;
+//			}
+//		}
+//	}
 	
 	
 //	u8 key_num=0;
@@ -240,7 +310,7 @@ int main(void)
 //			}else if(key_num==2){
 //				pulse_600mm-=10;	
 //			}else if(key_num==3){
-//				uint32_t p = 600 * pulse_600mm / 1000u;   /* Âö³åÊý */
+//				uint32_t p = 600 * pulse_600mm / 1000u;   /* ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 //				uint8_t cmd[13] = {0x00, 0xFD, 0x00, MOTOR_SPEED_H, MOTOR_SPEED_L, (uint8_t)MOTOR_ACCEL,
 //									0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6B};
 
@@ -249,16 +319,16 @@ int main(void)
 //				cmd[8] = (uint8_t)(p >> 8);
 //				cmd[9] = (uint8_t)p;
 
-//				cmd[0] = 0x01; cmd[2] = 0x00;   /* FL Õý×ª */
+//				cmd[0] = 0x01; cmd[2] = 0x00;   /* FL ï¿½ï¿½×ª */
 //				Serial_SendArray(cmd, 13); Delay_ms(5);
-//				cmd[0] = 0x02; cmd[2] = 0x01;   /* FR ·´×ª£¨¾µÏñ£© */
+//				cmd[0] = 0x02; cmd[2] = 0x01;   /* FR ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 //				Serial_SendArray(cmd, 13); Delay_ms(5);
-//				cmd[0] = 0x03; cmd[2] = 0x00;   /* RL Õý×ª */
+//				cmd[0] = 0x03; cmd[2] = 0x00;   /* RL ï¿½ï¿½×ª */
 //				Serial_SendArray(cmd, 13); Delay_ms(5);
-//				cmd[0] = 0x04; cmd[2] = 0x01;   /* RR ·´×ª£¨¾µÏñ£© */
+//				cmd[0] = 0x04; cmd[2] = 0x01;   /* RR ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 //				Serial_SendArray(cmd, 13); Delay_ms(5);
 
-//				/* Í¬²½ÊÍ·Å£ºÖ±ÐÐ sync=0x01£¬´ËÖ¡ÈÃ 4 ¸öµç»úÍ¬Ê±Æð²½ */
+//				/* Í¬ï¿½ï¿½ï¿½Í·Å£ï¿½Ö±ï¿½ï¿½ sync=0x01ï¿½ï¿½ï¿½ï¿½Ö¡ï¿½ï¿½ 4 ï¿½ï¿½ï¿½ï¿½ï¿½Í¬Ê±ï¿½ï¿½ */
 //				Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
 //				Delay_ms(5);
 //			}
@@ -269,41 +339,9 @@ int main(void)
 //	}
 
 	
-    shun_yaw_(90);
-    judge_yaw();
-	Delay_ms(500);
-    houtui_(600);
-    judge_trans();
     Delay_ms(500);
-    shun_yaw_(90);
-    judge_yaw();
-    Delay_ms(500);
-    qianjin_(600);
-    judge_trans();
-	while(1){}
-		
-#define PATH_START_X        2250u
-#define PATH_START_Y        2250u
-#define PATH_TARGET_X       1200u
-#define PATH_TARGET_Y       150u
-
-/* Initial heading: 1=north (+Y), 2=west (-X), 3=south (-Y), 4=east (+X). */
-#define PATH_INITIAL_DIR    1u
-    path_planner_init();
-    path_plan(2250, 2250, 1200, 150,
-              MAX_KEY_POINTS, xpath, ypath);
-
-    if(key_point_num == 0){
-        OLED_ShowString(1, 1, "PATH ERROR");
-        while(1){}
+    while(1){
+        Mytest(20);
+        Delay_ms(20);
     }
-
-    motor_enable_all();
-
-    for(i = 1; i < key_point_num; i++){
-        translation(xpath[i - 1], ypath[i - 1], xpath[i], ypath[i]);
-    }
-
-    OLED_ShowString(1, 1, "PATH DONE");
-    while(1){}
 }

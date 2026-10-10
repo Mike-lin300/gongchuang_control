@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-volatile uint8_t Serial_TxPacket[4];				//定义发送数据包数组，数据包格式：FF 01 02 03 04 FE
+uint8_t Serial_TxPacket[4];				//定义发送数据包数组，数据包格式：FF 01 02 03 04 FE
 volatile uint8_t Serial_RxPacket[16];				//定义接收数据包数组
 volatile uint8_t Serial_RxFlag;					//定义接收数据包标志位
 
@@ -194,49 +194,33 @@ void USART1_IRQHandler(void)
 {
     static uint8_t RxState = 0;
     static uint8_t pRxPacket = 0;
-    static uint8_t frame_len = 4;   // 默认短帧长度
 
     if (USART_GetITStatus(USART1, USART_IT_RXNE) == SET)
     {
         uint8_t RxData = USART_ReceiveData(USART1);
 
+        /* 状态机解析回包：帧头(地址 0x01~0x04) -> 3 字节数据 -> 包尾 0x6B
+         * 回包格式：[地址][功能码][数据][校验 0x6B]
+         * 0x3A 查询回包：[地址][0x3A][状态][0x6B]，其中状态字节 0x03 表示已到位 */
         if (RxState == 0)
         {
-            /* 帧头 0x01~0x04 */
-            if (RxData >= 0x01 && RxData <= 0x04)
+            if (RxData >= 0x01 && RxData <= 0x04)   /* 地址作为帧头 */
             {
                 Serial_RxPacket[0] = RxData;
                 pRxPacket = 1;
-                frame_len = 4;      // 默认按短帧处理
                 RxState = 1;
             }
         }
         else if (RxState == 1)
         {
             Serial_RxPacket[pRxPacket++] = RxData;
-
-            /* 收到第 2 个字节后判断是否为长帧：01 36 ... */
-            if (pRxPacket == 2)
-            {
-                if (Serial_RxPacket[0] == 0x01 && Serial_RxPacket[1] == 0x36)
-                {
-                    frame_len = 8;  // 长帧：01 36 00/01 + 4字节位置 + 6B
-                }
-                else
-                {
-                    frame_len = 4;  // 原短帧
-                }
-            }
-
-            if (pRxPacket >= frame_len)
+            if (pRxPacket >= 4)                     /* 收够 4 字节 */
             {
                 RxState = 0;
-                /* 检查最后一个字节是否为 0x6B */
-                if (Serial_RxPacket[frame_len - 1] == 0x6B)
+                if (Serial_RxPacket[3] == 0x6B)     /* 尾校验 */
                 {
-                    Serial_RxFlag = 1;   // 接收完成标志
+                    Serial_RxFlag = 1;
                 }
-                // 注意：pRxPacket 会在下次收到帧头时重置为 1
             }
         }
 

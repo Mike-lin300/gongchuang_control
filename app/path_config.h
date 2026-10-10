@@ -4,8 +4,8 @@
 /* Compile-time route configuration. Coordinates use the path planner grid. */
 #define PATH_START_X        2250u
 #define PATH_START_Y        2250u
-#define PATH_TARGET_X       1200u
-#define PATH_TARGET_Y       150u
+#define PATH_TARGET_X       2250u
+#define PATH_TARGET_Y       2250u
 
 /* Initial heading: 1=north (+Y), 2=west (-X), 3=south (-Y), 4=east (+X). */
 #define PATH_INITIAL_DIR    1u
