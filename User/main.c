@@ -10,9 +10,6 @@
 
 static u8 dir = PATH_INITIAL_DIR;
 static u16 judge_trans_display_count = 0;
-static u8 OrdinalNum = 0;
-static u16 route_current_x = PATH_START_X;
-static u16 route_current_y = PATH_START_Y;
 
 #define ABS(x) ((x) < 0 ? -(x) : (x))
 
@@ -112,242 +109,73 @@ static u8 translation(u16 x0, u16 y0, u16 x1, u16 y1)
     return judge();
 }
 
-void Mytest(unsigned char dT_ms)
+/* 从 (cx,cy) 规划到 (tx,ty) 并逐段执行，每段阻塞等电机到位。
+ * 成功返回 1；无路径或某段超时返回 0。 */
+static u8 go_to(u16 *cx, u16 *cy, u16 tx, u16 ty)
 {
-    static u8 initialized = 0;
-    static u8 path_ready = 0;
-    static u8 path_index = 0;
-    static u8 terminal_displayed = 1;
-    static u16 xpath[MAX_KEY_POINTS];
-    static u16 ypath[MAX_KEY_POINTS];
-    u16 target_x, target_y;
+    u16 xpath[MAX_KEY_POINTS], ypath[MAX_KEY_POINTS];
+    u8 i;
 
-    (void)dT_ms;
+    if(*cx == tx && *cy == ty) return 1;          /* 已在目标点，无需移动 */
 
-    if(!initialized){
-        path_planner_init();
-        motor_enable_all();
-        initialized = 1;
+    path_plan(*cx, *cy, tx, ty, MAX_KEY_POINTS, xpath, ypath);
+    if(key_point_num < 2) return 0;               /* 规划失败（无路径 / 参数非法） */
+
+    for(i = 1; i < key_point_num; i++){
+        if(!translation(xpath[i - 1], ypath[i - 1], xpath[i], ypath[i])) return 0;
     }
 
-	OLED_ShowNum(1,1,OrdinalNum,4);
-    switch(OrdinalNum)
-    {
-        case 0:  target_x = 2250u; target_y = 1200u; break; /* (2250,2250) -> (2250,1200) */
-        case 10: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
-        case 20: target_x = 1200u; target_y = 150u;  break; /* -> (1200,150) */
-        case 30: target_x = 150u;  target_y = 1200u; break; /* -> (150,1200) */
-        case 40: target_x = 1200u; target_y = 2250u; break; /* -> (1200,2250) */
-        case 50: target_x = 1200u; target_y = 150u; break; /* -> (1200,150) */
-        case 60: target_x = 150u; target_y = 1200u;  break; /* -> (150,1200) */
-        case 70: target_x = 1200u;  target_y = 2250u; break; /* -> (1200,2250) */
-        case 80: target_x = 1200u; target_y = 150u; break; /* -> (1200,150) */
-        case 90: target_x = 150u; target_y = 1200u;  break; /* -> (150,1200) */
-		
-		
-		
-        case 100: target_x = PATH_TARGET_X; target_y = PATH_TARGET_Y; break; /* -> (2250,2250) */
-
-        case 110:
-            if(!terminal_displayed){
-                OLED_ShowString(1, 1, "PATH DONE");
-                terminal_displayed = 1;
-            }
-            return;
-
-        case 119:
-            if(!terminal_displayed){
-                OLED_ShowString(1, 1, "PATH ERROR");
-                terminal_displayed = 1;
-            }
-            return;
-
-        default:
-            OrdinalNum = 119;
-            return;
-    }
-
-    if(!path_ready){
-        path_plan(route_current_x, route_current_y,
-                  target_x, target_y,
-                  MAX_KEY_POINTS, xpath, ypath);
-        if(key_point_num < 2){
-            OrdinalNum = 119;
-            return;
-        }
-        path_index = 1;
-        path_ready = 1;
-    }
-
-    /* Execute one obstacle-safe straight segment on each state-machine pass. */
-    if(path_index < key_point_num){
-        if(!translation(xpath[path_index - 1], ypath[path_index - 1],
-                        xpath[path_index], ypath[path_index])){
-            OrdinalNum = 119;
-            return;
-        }
-
-        route_current_x = xpath[path_index];
-        route_current_y = ypath[path_index];
-        path_index++;
-    }
-
-    if(path_index >= key_point_num){
-        path_ready = 0;
-        path_index = 0;
-        if(OrdinalNum == 100) OrdinalNum = 110;
-        else                 OrdinalNum += 10;
-    }
+    *cx = tx;
+    *cy = ty;
+    return 1;
 }
 
 int main(void)
 {
+    u16 cur_x = PATH_START_X;
+    u16 cur_y = PATH_START_Y;
+    u8 step = 0;
+
     LED_Init();
     OLED_Init();
     Key_Init();
     Serial_Init();
-	USART2_Init(115200);
+    USART2_Init(115200);
     Delay_ms(200);
 
-//	while (1)
-//	{
-//		USART2_SendByte('A');        // 0x41
-//		USART2_SendByte('B');        // 0x42
-//		USART2_SendByte('\r');
-//		USART2_SendByte('\n');
-//		Delay_ms(500);
-//		PC13_Turn();
-//	}
-
-
-//	uint16_t print_cnt = 0;   // ��ӡ��Ƶ����
-
-//	USART2_SendByte(0x33);
-//
-//	while (1)
-//	{
-//		uint8_t key = 0;
-
-//		/* ÿԼ 500ms ͨ�� USART2 ��ӡһ��״̬ */
-//		if (++print_cnt >= 500)
-//		{
-//			/*
-//				int32_t pos_now    = 0;   // �����ǰλ�ã��Ӵ��ڶ��أ�
-//				int32_t pos_memo   = 0;   // ��ס��λ��
-//				uint8_t pos_dir    = 0;   // ����λ�ݴ�
-//			*/
-//			print_cnt = 0;
-
-//			USART2_SendString(" now=");
-//			USART2_SendInt(pos_now);
-//			USART2_SendString(" memo=");
-//			USART2_SendInt(pos_memo);
-//			USART2_SendString(" dir=");
-//			USART2_SendDec(pos_dir);
-//			USART2_SendString("\r\n");
-//		}
-//		Delay_ms(1);
-//
-
-//		/* ����2ģ�ⰴ�� */
-//		if (uart_key_num != 0)
-//		{
-//			key = uart_key_num;
-//			uart_key_num = 0;              // ���ѵ�
-//		}
-
-//		if (key != 0)
-//		{
-//			if (key == 1)
-//			{
-//				motor_read_pos();       // �ڲ����� pos_now �� pos_dir
-//				pos_memo = pos_now;     // �� ���䵱ǰλ��
-//			}
-//			else if (key == 2)
-//			{
-//				motor_set_pos(pos_memo);
-//			}
-//			else if (key == 3)
-//			{
-//				pos_memo += 160;         // ���ڼ���λ��΢��
-//			}
-//			else if (key == 4)
-//			{
-//				pos_memo -= 160;
-//			}
-//		}
-//	}
-	
-	
-//	u8 key_num=0;
-//	u32 now_compsition=0;
-//	uint8_t cmd[13] = {0x00, 0xFD, 0x00, 0x11, 0x94, 0xc8,0x01, 
-//						now_compsition>>24,now_compsition>>16, now_compsition>>8, now_compsition, 0x00, 0x6B};
-//	
-//	while(1) {
-//		uint8_t key_num = Key_GetNum();
-//		if (key_num != 0) {
-//			if(key_num==1){
-//				
-//				Serial_SendByte(0x01); Serial_SendByte(0x36); Serial_SendByte(0x6B);
-//				while(!uart_get){
-//					now_compsition=compsition_buffer[0]<<24||compsition_buffer[1]<<16||\
-//					compsition_buffer[0]<<8||compsition_buffer[0];
-//					continue;
-//				}
-//			}else if(key_num==2){
-//				Serial_SendArray(cmd, 13);
-//			}else if(key_num==3){
-//				now_compsition+=1000;
-//			}
-//		}
-//		OLED_ShowNum(1, 1, key_num, 1);
-//		OLED_ShowHexNum(2, 1, now_compsition, 1);
-//	}
-	
-//	u16 pulse_600mm=12658u;
-//	uint8_t last_key = 0;
-//	while(1) {
-//		uint8_t key_num = Key_GetNum();
-//		if (key_num != 0) {
-//			last_key = key_num;
-//			if(key_num==1){
-//				pulse_600mm+=10;
-//			}else if(key_num==2){
-//				pulse_600mm-=10;	
-//			}else if(key_num==3){
-//				uint32_t p = 600 * pulse_600mm / 1000u;   /* ������ */
-//				uint8_t cmd[13] = {0x00, 0xFD, 0x00, MOTOR_SPEED_H, MOTOR_SPEED_L, (uint8_t)MOTOR_ACCEL,
-//									0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6B};
-
-//				cmd[6] = (uint8_t)(p >> 24);
-//				cmd[7] = (uint8_t)(p >> 16);
-//				cmd[8] = (uint8_t)(p >> 8);
-//				cmd[9] = (uint8_t)p;
-
-//				cmd[0] = 0x01; cmd[2] = 0x00;   /* FL ��ת */
-//				Serial_SendArray(cmd, 13); Delay_ms(5);
-//				cmd[0] = 0x02; cmd[2] = 0x01;   /* FR ��ת������ */
-//				Serial_SendArray(cmd, 13); Delay_ms(5);
-//				cmd[0] = 0x03; cmd[2] = 0x00;   /* RL ��ת */
-//				Serial_SendArray(cmd, 13); Delay_ms(5);
-//				cmd[0] = 0x04; cmd[2] = 0x01;   /* RR ��ת������ */
-//				Serial_SendArray(cmd, 13); Delay_ms(5);
-
-//				/* ͬ���ͷţ�ֱ�� sync=0x01����֡�� 4 �����ͬʱ�� */
-//				Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
-//				Delay_ms(5);
-//			}
-//		}
-//		OLED_ShowNum(4, 1, last_key, 1);
-//		OLED_ShowNum(4, 3, key_num, 1);
-//		OLED_ShowNum(3, 1, pulse_600mm, 5);
-//	}
+    path_planner_init();
+    motor_enable_all();
 
 	
-    Delay_ms(500);
-    while(1){
-        Mytest(20);
-        Delay_ms(20);
+//	go_to(&cur_x, &cur_y, 2250u, 1200u);
+//	while(1){
+//		
+//	}
+    /* 路线：每个 case 开头指定「下一个地点」，随后 go_to 完成规划 + 发送电机 + 等到位，
+     * 全部到位后才进入下一个 case（不共享 path_ready/path_index 之类的中间状态）。 */
+    while(1)
+    {
+        OLED_ShowNum(1, 1, step, 4);
+
+        switch(step)
+        {
+            case 0: if(!go_to(&cur_x, &cur_y, 2250u, 1200u)) step = 99; else step = 1;   break; /* -> (2250,1200) */
+            case 1: if(!go_to(&cur_x, &cur_y, 1200u, 2250u)) step = 99; else step = 2;   break; /* -> (1200,2250) */
+            case 2: if(!go_to(&cur_x, &cur_y, 1200u, 150u))  step = 99; else step = 3;   break; /* -> (1200,150)  */
+            case 3: if(!go_to(&cur_x, &cur_y, 150u,  1200u)) step = 99; else step = 4;   break; /* -> (150,1200)  */
+            case 4: if(!go_to(&cur_x, &cur_y, 1200u, 2250u)) step = 99; else step = 5;   break; /* -> (1200,2250) */
+            case 5: if(!go_to(&cur_x, &cur_y, 1200u, 150u))  step = 99; else step = 6;   break; /* -> (1200,150)  */
+            case 6: if(!go_to(&cur_x, &cur_y, 150u,  1200u)) step = 99; else step = 7;   break; /* -> (150,1200)  */
+            case 7: if(!go_to(&cur_x, &cur_y, PATH_TARGET_X, PATH_TARGET_Y)) step = 99; else step = 100;   break; /* -> (1200,2250) */
+            case 8: if(!go_to(&cur_x, &cur_y, 1200u, 150u))  step = 99; else step = 9;   break; /* -> (1200,150)  */
+            case 9: if(!go_to(&cur_x, &cur_y, PATH_TARGET_X, PATH_TARGET_Y)) step = 99; else step = 100; break; /* -> 终点(2250,2250) */
+
+            case 100:
+                OLED_ShowString(1, 1, "PATH DONE");
+                while(1){}
+            case 99:
+                OLED_ShowString(1, 1, "PATH ERROR");
+                while(1){}
+        }
     }
 }
