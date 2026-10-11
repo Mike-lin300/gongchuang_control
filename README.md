@@ -28,9 +28,10 @@ f103c8t6/
 ├── Library/                ST 标准外设库（全量）
 ├── System/Delay.c/h        延时 us/ms/s
 ├── Hardware/
-│   ├── Serial.c/h          ★ USART1(电机) + USART2(电脑)
+│   ├── Serial.c/h          ★ USART1(电机) + USART2(陀螺仪输入) + USART3(角度输出)
+│   ├── Gyro.c/h            ★ JY901 兼容 0x55 0x53 Z 轴角度解析
 │   ├── OLED.c/h            0.96" OLED（软件 I2C，PA0/PA1，从机 0x78）
-│   ├── Key.c/h             3 个按键（PB1 / PB11 / PB10）
+│   ├── Key.c/h             按键（PB1 / PB11；PB10 与 USART3_TX 冲突）
 │   └── LED.c/h             LED（PA1/PA2 + PC13 板载灯）
 ├── User/main.c             ★ 主程序
 ├── mingling/               旧版硬编码电机指令（已废弃，可忽略）
@@ -49,10 +50,23 @@ f103c8t6/
 | 串口 | 引脚 | 接什么 | 用途 |
 |---|---|---|---|
 | **USART1** | PA9(TX) / PA10(RX) | 电机总线 | 发运动指令、读位置 |
-| **USART2** | PA2(TX) / PA3(RX) | 电脑（USB-TTL，可选） | 保留 `k:数字` 调试接收；当前自动路线不读取这些按键 |
+| **USART2** | PA2(TX) / PA3(RX) | JY901 兼容陀螺仪（可选 USB-TTL 调试） | 115200、8N1；接收并校验 0x55 0x53 角度帧，同时保留 `k:数字` 调试命令 |
+| **USART3** | **PB10(TX)** / PB11(RX)（默认映射） | 上位机 USB-TTL | 115200、8N1；输出可直接阅读的角度文本 |
 
-- 电脑串口助手必须接 **USART2（PA2/PA3）**，波特率 **115200**。
+- 陀螺仪 TX 接 **PA3（USART2_RX）**，陀螺仪 RX 可接 **PA2（USART2_TX）**，并与单片机共地，波特率 **115200**、8N1。
+- 上位机 USB-TTL 的 RX 接 **PB10（USART3_TX）**，GND 共地；打开串口工具选择这个 USB-TTL 对应的 COM 口。
+- USART2 的电脑串口助手仍可接 PA2/PA3 做 `k:数字` 调试；USART3 只输出角度文本。
+- USART3 使用 PB10/PB11 后，PB10 对应的第 3 个按键不可再使用。
 - 电机的 4 个从机都挂在 **USART1** 一条总线上，地址 1~4。
+
+### 3.1 陀螺仪角度读取
+
+`Hardware/Gyro.c` 在 USART2 接收中断中逐字节解析 JY901/WitMotion 兼容协议。只有帧头为 `55 53` 且第 11 字节校验和正确时，才更新 Z 轴（Yaw）数据，并通过 USART3 输出一行角度文本，例如 `-12.34`：
+
+- `Gyro_GetYawRaw()`：返回有符号 16 位原始值；
+- `Gyro_GetYawCentiDegrees()`：返回百分之一度，换算关系为 `raw × 18000 / 32768`；
+- USART3 每个有效角度帧输出 `正负号/整数部分.两位小数\r\n`，单位为度；
+- 主程序把最近一次有效角度显示在 OLED 第 4 行，未收到有效帧时不会误报数据。
 
 ---
 
@@ -154,7 +168,7 @@ f103c8t6/
 4. **网格 y 轴间距不均匀**：`2250→1725→1200` 是 Δ525，`1200→625` 是 Δ575、`625→150` 是 Δ475，
    疑似 `625` 应为 `675`。
 5. `mingling/` 目录已废弃（12 字节缺 0xFD 的旧指令），被 `motor.c` 动态组帧取代。
-6. `User/stm32f10x_it.c` 的中断函数都是空壳，真正的 USART1/USART2 中断在 `Serial.c` 里实现。
+6. `User/stm32f10x_it.c` 的中断函数都是空壳，真正的 USART1/USART2 中断在 `Serial.c` 里实现；USART3 仅发送，不使用接收中断。
 
 ---
 

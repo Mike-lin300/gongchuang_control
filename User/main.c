@@ -2,6 +2,7 @@
 #include "Delay.h"
 #include "OLED.h"
 #include "Serial.h"
+#include "Gyro.h"
 #include "Key.h"
 #include "LED.h"
 #include "motor.h"
@@ -135,18 +136,20 @@ int main(void)
     u16 cur_x = PATH_START_X;
     u16 cur_y = PATH_START_Y;
     u8 step = 0;
+    int32_t yaw_centi_degrees;
 
     LED_Init();
     OLED_Init();
     Key_Init();
     Serial_Init();
+    Gyro_Init();
+    USART3_Init(115200);
     USART2_Init(115200);
     Delay_ms(200);
 
     path_planner_init();
     motor_enable_all();
 
-	
 //	go_to(&cur_x, &cur_y, 2250u, 1200u);
 //	while(1){
 //		
@@ -156,6 +159,12 @@ int main(void)
     while(1)
     {
         OLED_ShowNum(1, 1, step, 4);
+
+        /* 显示最近一次校验通过的 Z 轴角度，单位 0.01 度。传感器未接入时
+         * 保留空白，解析仍在 USART2 中断中持续进行。 */
+        OLED_ShowString(4, 1, "YAW:");
+        if (Gyro_GetYawCentiDegrees(&yaw_centi_degrees))
+            OLED_ShowSignedNum(4, 5, yaw_centi_degrees, 6);
 
         switch(step)
         {

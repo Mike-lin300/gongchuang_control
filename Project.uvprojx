@@ -713,6 +713,16 @@
               <FileType>5</FileType>
               <FilePath>.\Hardware\Serial.h</FilePath>
             </File>
+            <File>
+              <FileName>Gyro.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Hardware\Gyro.c</FilePath>
+            </File>
+            <File>
+              <FileName>Gyro.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Hardware\Gyro.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1493,6 +1503,16 @@
               <FileName>Serial.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\Hardware\Serial.h</FilePath>
+            </File>
+            <File>
+              <FileName>Gyro.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Hardware\Gyro.c</FilePath>
+            </File>
+            <File>
+              <FileName>Gyro.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Hardware\Gyro.h</FilePath>
             </File>
           </Files>
         </Group>

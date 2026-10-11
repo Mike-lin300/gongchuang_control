@@ -27,5 +27,10 @@ void USART2_SendHex32(uint32_t val);
 void USART2_SendDec(uint32_t val);
 void USART2_SendInt(int32_t v);
 
+/* USART3：陀螺仪角度文本输出，使用默认映射 PB10(TX)/PB11(RX)。 */
+void USART3_Init(uint32_t bound);
+void USART3_SendByte(uint8_t byte);
+void USART3_SendAngleCentiDegrees(int32_t centi_degrees);
+
 
 #endif

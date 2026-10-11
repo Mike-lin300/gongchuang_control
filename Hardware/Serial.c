@@ -1,4 +1,5 @@
 #include "stm32f10x.h"                  // Device header
+#include "Gyro.h"
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -289,7 +290,10 @@ void USART2_IRQHandler(void)
     if (USART_GetITStatus(USART2, USART_IT_RXNE) == SET)
     {
         uint8_t ch = USART_ReceiveData(USART2);
-		USART2_SendByte(ch);
+
+        /* USART2 同时接收电脑调试文本和 JY901 二进制帧；二进制数据交给
+         * 陀螺仪解析器，不能像普通串口回显那样原样发回。 */
+        Gyro_ProcessByte(ch);
         switch (state)
         {
             case 0:
@@ -371,4 +375,79 @@ void USART2_SendInt(int32_t v)
         v = -v;
     }
     USART2_SendDec((uint32_t)v);
+}
+
+/* USART3 输出：采用默认映射，TX 为 PB10，RX 为 PB11；当前只启用发送方向。 */
+void USART3_Init(uint32_t bound)
+{
+    GPIO_InitTypeDef GPIO_InitStructure;
+    USART_InitTypeDef USART_InitStructure;
+
+    /* 使能 GPIOB 和 USART3 时钟（不需要 AFIO 时钟） */
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+
+    /* USART3 TX -> PB10 */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+    USART_InitStructure.USART_BaudRate = bound;
+    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+    USART_InitStructure.USART_StopBits = USART_StopBits_1;
+    USART_InitStructure.USART_Parity = USART_Parity_No;
+    USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+    USART_InitStructure.USART_Mode = USART_Mode_Tx;
+    USART_Init(USART3, &USART_InitStructure);
+
+    USART_Cmd(USART3, ENABLE);
+}
+
+void USART3_SendByte(uint8_t byte)
+{
+    USART_SendData(USART3, byte);
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET);
+}
+
+static void USART3_SendUnsigned(uint32_t value)
+{
+    char digits[10];
+    uint8_t count = 0;
+
+    if (value == 0u)
+    {
+        USART3_SendByte('0');
+        return;
+    }
+
+    while (value != 0u)
+    {
+        digits[count++] = (char)('0' + (value % 10u));
+        value /= 10u;
+    }
+    while (count != 0u)
+        USART3_SendByte((uint8_t)digits[--count]);
+}
+
+void USART3_SendAngleCentiDegrees(int32_t centi_degrees)
+{
+    uint32_t magnitude;
+
+    if (centi_degrees < 0)
+    {
+        USART3_SendByte('-');
+        magnitude = (uint32_t)(-(centi_degrees + 1)) + 1u;
+    }
+    else
+    {
+        magnitude = (uint32_t)centi_degrees;
+    }
+
+    USART3_SendUnsigned(magnitude / 100u);
+    USART3_SendByte('.');
+    USART3_SendByte((uint8_t)('0' + ((magnitude / 10u) % 10u)));
+    USART3_SendByte((uint8_t)('0' + (magnitude % 10u)));
+    USART3_SendByte('\r');
+    USART3_SendByte('\n');
 }
