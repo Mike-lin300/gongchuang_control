@@ -30,7 +30,18 @@ void USART2_SendInt(int32_t v);
 /* USART3：陀螺仪角度文本输出，使用默认映射 PB10(TX)/PB11(RX)。 */
 void USART3_Init(uint32_t bound);
 void USART3_SendByte(uint8_t byte);
+
+/* 通用发送：整数 / 小数 / 字符 / 字符串都能转换后经 USART3 发出。 */
+void USART3_SendString(const char *s);
+void USART3_SendInt(int32_t v);
+void USART3_SendFloat(float v, uint8_t decimals);
+void USART3_Printf(const char *format, ...);   /* 支持 %d %i %u %c %s %f(可带 %.Nf 精度) % */
+
+/* 角度专用发送（0.01 度整数 -> "xxx.xx\r\n"），底层复用上述通用发送。 */
 void USART3_SendAngleCentiDegrees(int32_t centi_degrees);
+
+/* 自检：按顺序发送字符串/字符/整数/小数/角度，串口终端可核对输出。 */
+void USART3_SelfTest(void);
 
 
 #endif

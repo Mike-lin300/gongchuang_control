@@ -430,6 +430,113 @@ static void USART3_SendUnsigned(uint32_t value)
         USART3_SendByte((uint8_t)digits[--count]);
 }
 
+void USART3_SendString(const char *s)
+{
+    while (*s)
+        USART3_SendByte((uint8_t)*s++);
+}
+
+void USART3_SendInt(int32_t v)
+{
+    uint32_t u;
+    if (v < 0)
+    {
+        USART3_SendByte('-');
+        u = (uint32_t)(~v) + 1u;        /* 两补码取绝对值，INT32_MIN 也安全 */
+    }
+    else
+    {
+        u = (uint32_t)v;
+    }
+    USART3_SendUnsigned(u);
+}
+
+void USART3_SendFloat(float v, uint8_t decimals)
+{
+    uint32_t scale = 1u;
+    uint32_t fpart;
+    int32_t ipart;
+    uint8_t i;
+
+    if (decimals > 6u) decimals = 6u;
+    for (i = 0; i < decimals; i++) scale *= 10u;
+
+    if (v < 0.0f)
+    {
+        USART3_SendByte('-');
+        v = -v;
+    }
+
+    ipart = (int32_t)v;
+    fpart = (uint32_t)((v - (float)ipart) * (float)scale + 0.5f);
+    if (fpart >= scale)                 /* 四舍五入进位 */
+    {
+        fpart = 0u;
+        ipart++;
+    }
+
+    USART3_SendInt(ipart);
+    if (decimals != 0u)
+    {
+        USART3_SendByte('.');
+        for (i = 0; i < decimals; i++)
+        {
+            scale /= 10u;
+            USART3_SendByte((uint8_t)('0' + (fpart / scale) % 10u));
+        }
+    }
+}
+
+/* 通用格式化发送：整数 / 小数 / 字符 / 字符串都能直接转换后经 USART3 发出。
+ * 支持 %d %i %u %c %s %f（可带 %.Nf 精度，默认 2 位）以及 %%。 */
+void USART3_Printf(const char *format, ...)
+{
+    va_list ap;
+    const char *p;
+    uint8_t prec;
+
+    va_start(ap, format);
+    for (p = format; *p != '\0'; p++)
+    {
+        if (*p != '%')
+        {
+            USART3_SendByte((uint8_t)*p);
+            continue;
+        }
+
+        p++;
+        prec = 2u;
+        if (*p == '.')
+        {
+            p++;
+            prec = 0u;
+            while (*p >= '0' && *p <= '9')
+            {
+                prec = (uint8_t)(prec * 10u + (*p - '0'));
+                p++;
+            }
+            if (prec > 6u) prec = 6u;
+        }
+
+        switch (*p)
+        {
+            case 'd':
+            case 'i': USART3_SendInt((int32_t)va_arg(ap, int)); break;
+            case 'u': USART3_SendUnsigned((uint32_t)va_arg(ap, unsigned int)); break;
+            case 'c': USART3_SendByte((uint8_t)va_arg(ap, int)); break;
+            case 's': USART3_SendString(va_arg(ap, const char *)); break;
+            case 'f': USART3_SendFloat((float)va_arg(ap, double), prec); break;
+            case '%': USART3_SendByte('%'); break;
+            default:
+                USART3_SendByte('%');
+                USART3_SendByte((uint8_t)*p);
+                break;
+        }
+    }
+    va_end(ap);
+}
+
+/* 角度专用发送：0.01 度整数 -> "xxx.xx\r\n"，底层复用 USART3_SendUnsigned。 */
 void USART3_SendAngleCentiDegrees(int32_t centi_degrees)
 {
     uint32_t magnitude;
@@ -450,4 +557,31 @@ void USART3_SendAngleCentiDegrees(int32_t centi_degrees)
     USART3_SendByte((uint8_t)('0' + (magnitude % 10u)));
     USART3_SendByte('\r');
     USART3_SendByte('\n');
+}
+#include "Delay.h"
+/* 自检：按顺序发送字符串 / 字符 / 整数 / 小数 / 角度，供串口终端核对。 */
+void USART3_SelfTest(void)
+{
+    USART3_Printf("--- USART3 test ---\r\n");
+	Delay_ms(500);
+    USART3_Printf("str   = %s\r\n", "Hello");
+	Delay_ms(500);
+    USART3_Printf("char  = %c\r\n", 'A');
+	Delay_ms(500);
+    USART3_Printf("int   = %d\r\n", -12345);
+	Delay_ms(500);
+    USART3_Printf("uint  = %u\r\n", 123456);
+	Delay_ms(500);
+    USART3_Printf("float = %.2f\r\n", 12.34);
+	Delay_ms(500);
+    USART3_Printf("float = %.3f\r\n", -0.125);
+	Delay_ms(500);
+    USART3_Printf("pct   = 100%%\r\n");
+	Delay_ms(500);
+    USART3_Printf("angle = ");
+	Delay_ms(500);
+    USART3_SendAngleCentiDegrees(12345);
+	Delay_ms(500);
+    USART3_SendAngleCentiDegrees(-5);
+    USART3_Printf("done\r\n");
 }

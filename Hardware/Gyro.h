@@ -24,5 +24,6 @@ uint8_t Gyro_GetYawRaw(int16_t *raw);
 
 /* 最近一次有效帧的计数，可用于判断传感器是否正在输出。 */
 extern volatile uint32_t Gyro_FrameCount;
+extern volatile int32_t yaw_centi_degrees;
 
 #endif /* __GYRO_H */

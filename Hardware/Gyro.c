@@ -1,5 +1,4 @@
 #include "Gyro.h"
-#include "Serial.h"
 
 static uint8_t frame[GYRO_FRAME_LEN];
 static uint8_t frame_pos;
@@ -30,8 +29,6 @@ static void Gyro_CommitAngle(void)
     yaw_valid = 1;
     Gyro_FrameCount++;
 
-    /* USART3 输出可直接阅读的角度文本，例如：-12.34\r\n。 */
-    USART3_SendAngleCentiDegrees(yaw_centi_degrees);
 }
 
 void Gyro_Init(void)

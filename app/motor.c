@@ -17,6 +17,10 @@
 #define MOTOR_SPEED_H    ((uint8_t)(MOTOR_SPEED >> 8))   /* 速度高字节 */
 #define MOTOR_SPEED_L    ((uint8_t)(MOTOR_SPEED & 0xFF)) /* 速度低字节 */
 
+/* F6 速度模式参数：速度 0~3000 RPM，加速度 0~255 档。 */
+#define SPEED_MODE_FUNCTION 0xF6u
+#define TURN_SPEED_ACCEL    150u
+
 /*
  * 移动命令（13 字节）：
  *   [地址][FD][方向][速度H][速度L][加速度][脉冲B3][脉冲B2][脉冲B1][脉冲B0][相对][同步][校验]
@@ -123,7 +127,7 @@ void you_(uint32_t mm)
 	Delay_ms(5);
 }
 
-/* 右旋转*/
+/* 右旋转（同步触发）*/
 void shun_yaw_(uint32_t deg)
 {
     uint32_t p = deg *PULSE_PER_360DEG/360u;
@@ -138,16 +142,16 @@ void shun_yaw_(uint32_t deg)
     Serial_SendArray(cmd, 13); Delay_ms(5);
     cmd[0] = 0x02; cmd[2] = 0x00;   /* FR */
     Serial_SendArray(cmd, 13); Delay_ms(5);
-//    cmd[0] = 0x03; cmd[2] = 0x00;   /* RL */
-//    Serial_SendArray(cmd, 13); Delay_ms(5);
-//    cmd[0] = 0x04; cmd[2] = 0x00;   /* RR */
-//    Serial_SendArray(cmd, 13); Delay_ms(5);
-
+    cmd[0] = 0x03; cmd[2] = 0x00;   /* RL */
+    Serial_SendArray(cmd, 13); Delay_ms(5);
+    cmd[0] = 0x04; cmd[2] = 0x00;   /* RR */
+    Serial_SendArray(cmd, 13); Delay_ms(5);
+	
     Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
 	Delay_ms(5);
 }
 
-/* 左旋转*/
+/* 左旋转（同步触发）*/
 void ni_yaw_(uint32_t deg)
 {
     uint32_t p = deg*PULSE_PER_360DEG/360u ;
@@ -162,13 +166,45 @@ void ni_yaw_(uint32_t deg)
     Serial_SendArray(cmd, 13); Delay_ms(5);
     cmd[0] = 0x02; cmd[2] = 0x01;   /* FR */
     Serial_SendArray(cmd, 13); Delay_ms(5);
-//    cmd[0] = 0x03; cmd[2] = 0x01;   /* RL */
-//    Serial_SendArray(cmd, 13); Delay_ms(5);
-//    cmd[0] = 0x04; cmd[2] = 0x01;   /* RR */
-//    Serial_SendArray(cmd, 13); Delay_ms(5);
-
+    cmd[0] = 0x03; cmd[2] = 0x01;   /* RL */
+    Serial_SendArray(cmd, 13); Delay_ms(5);
+    cmd[0] = 0x04; cmd[2] = 0x01;   /* RR */
+    Serial_SendArray(cmd, 13); Delay_ms(5);
+	
     Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
 	Delay_ms(5);
+	
+}
+
+/* 发送 F6 速度模式命令：[地址][F6][方向][速度H][速度L][加速度][同步][6B]。
+ * 旋转仍使用 FL(1) 和 FR(2)，两个电机方向按现有旋转逻辑保持一致。
+ * 速度模式是持续运行命令，rpm=0 用于停止。 */
+static void motor_send_speed_command(uint8_t address, uint8_t direction, uint16_t rpm)
+{
+    uint8_t cmd[8];
+
+    cmd[0] = address;
+    cmd[1] = SPEED_MODE_FUNCTION;
+    cmd[2] = direction;
+    cmd[3] = (uint8_t)(rpm >> 8);
+    cmd[4] = (uint8_t)(rpm & 0xFFu);
+    cmd[5] = TURN_SPEED_ACCEL;
+    cmd[6] = 0x00;                 /* 立即执行，不等待同步释放 */
+    cmd[7] = 0x6B;
+
+    Serial_SendArray(cmd, 8);
+    Delay_ms(2);
+}
+
+void motor_rotate_speed(uint8_t direction, uint16_t rpm)
+{
+    motor_send_speed_command(0x01, direction, rpm);
+    motor_send_speed_command(0x02, direction, rpm);
+}
+
+void motor_rotate_speed_stop(void)
+{
+    motor_rotate_speed(0x00, 0x0000);
 }
 
 /* 使能 4 个电机：[地址][F3][AB][01][同步][校验]，上电默认失能，移动前先调一次 */

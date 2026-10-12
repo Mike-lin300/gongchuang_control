@@ -23,6 +23,10 @@ void you_(uint32_t deg);
 void shun_yaw_(uint32_t deg);
 void ni_yaw_(uint32_t deg);
 
+/* F6 速度模式：方向 0=CW，1=CCW；速度单位 RPM；当前用于陀螺仪转向测试。 */
+void motor_rotate_speed(uint8_t direction, uint16_t rpm);
+void motor_rotate_speed_stop(void);
+
 /* 使能 4 个电机：上电默认失能，移动前先调一次 */
 void motor_enable_all(void);
 extern volatile uint8_t uart_key_num;
