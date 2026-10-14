@@ -31,3 +31,6 @@ JLinkLog.txt
 *.log
 *.zip
 *.rar
+
+# 编辑器配置
+.vscode/
