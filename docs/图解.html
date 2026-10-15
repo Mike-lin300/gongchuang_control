@@ -87,14 +87,15 @@
 <header>
   <div class="wrap">
     <h1>四麦轮小车图解（持续扩充）</h1>
-    <p>STM32F103C8T6 · 4× ZDT-X42S 闭环步进 · JY901 陀螺仪　|　对应文档 01 / 02 / 03，证据标“代码/手册 p.xx”</p>
+    <p>STM32F103C8T6 · 4× ZDT-X42S 闭环步进 · JY901 陀螺仪　|　对应文档 01 / 02 / 03 / 04，证据标“代码/手册 p.xx”</p>
   </div>
 </header>
 <nav><div class="wrap">
   <a href="#s1">① 硬件连接</a>
   <a href="#s2">② ZDT 协议帧</a>
   <a href="#s3">③ 四轮方向位</a>
-  <a href="#s4">后续待补</a>
+  <a href="#s4">④ 陀螺仪闭环</a>
+  <a href="#s5">后续待补</a>
 </div></nav>
 <main>
 
@@ -366,14 +367,85 @@
   </div>
 </section>
 
-<!-- ===== 后续待补 ===== -->
+<!-- ===== ④ 陀螺仪闭环 ===== -->
 <section id="s4">
-  <h2>④ 后续步骤待补图</h2>
+  <h2>④ 陀螺仪闭环（JY901 → 补转）</h2>
+  <h3>4.1 JY901 角度帧（11 字节，USART2 接收）</h3>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">55</span><span class="lbl">帧头</span></div>
+    <div class="byte b-code"><span class="hex">53</span><span class="lbl">角度帧</span></div>
+    <div class="byte b-opt"><span class="hex">XX XX</span><span class="lbl">Roll 2B</span></div>
+    <div class="byte b-opt"><span class="hex">XX XX</span><span class="lbl">Pitch 2B</span></div>
+    <div class="byte b-vel"><span class="hex">XX XX</span><span class="lbl">Yaw 小端有符号</span></div>
+    <div class="byte b-opt"><span class="hex">XX XX</span><span class="lbl">温度 2B</span></div>
+    <div class="byte b-chk"><span class="hex">SUM</span><span class="lbl">校验和</span></div>
+  </div>
+  <p class="note">yaw = frame[6] + frame[7]&lt;&lt;8；角度(0.01°) = raw × 18000 / 32768；校验 = 前 10 字节求和取低 8 位。当前配置 ±180° 有符号输出（若恢复出厂 0~360°，int16 解析会在 327.68° 处出错）。</p>
+
+  <h3>4.2 闭环转向流程（生效版 main.c:264-295，PA8 触发转 90°）</h3>
+  <div class="svgbox">
+  <svg viewBox="0 0 980 240" width="100%" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
+    <defs>
+      <marker id="arr2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#46566b"/>
+      </marker>
+    </defs>
+    <rect x="20" y="30" width="150" height="56" rx="9" fill="#e8f0fc" stroke="#0c3c8c"/>
+    <text x="95" y="54" text-anchor="middle" font-weight="bold" fill="#0c3c8c">读起始角</text>
+    <text x="95" y="72" text-anchor="middle" fill="#5b6675">Gyro_GetYaw</text>
+
+    <rect x="210" y="30" width="160" height="56" rx="9" fill="#fff5d6" stroke="#a07a00"/>
+    <text x="290" y="54" text-anchor="middle" font-weight="bold" fill="#7a5d00">算误差</text>
+    <text x="290" y="72" text-anchor="middle" fill="#5b6675">rel/error 包到 ±180°</text>
+
+    <polygon points="430,22 520,58 430,94 340,58" fill="#e2f2f1" stroke="#0b7a75"/>
+    <text x="430" y="55" text-anchor="middle" font-weight="bold" fill="#0b7a75">|error|</text>
+    <text x="430" y="70" text-anchor="middle" fill="#0b7a75">≤1°?</text>
+
+    <rect x="560" y="20" width="180" height="48" rx="9" fill="#ffe3cc" stroke="#bf5c16"/>
+    <text x="650" y="40" text-anchor="middle" font-weight="bold" fill="#bf5c16">error&gt;0 → ni_yaw_(度)</text>
+    <text x="650" y="58" text-anchor="middle" fill="#5b6675">error&lt;0 → shun_yaw_(度)</text>
+
+    <rect x="560" y="82" width="180" height="44" rx="9" fill="#e7f3e8" stroke="#2e7d32"/>
+    <text x="650" y="109" text-anchor="middle" font-weight="bold" fill="#2e7d32">judge() 等到位 + 50ms</text>
+
+    <rect x="780" y="20" width="180" height="48" rx="9" fill="#e7f3e8" stroke="#2e7d32"/>
+    <text x="870" y="40" text-anchor="middle" font-weight="bold" fill="#2e7d32">成功退出</text>
+    <text x="870" y="58" text-anchor="middle" fill="#5b6675">最多修正 5 次</text>
+
+    <rect x="780" y="82" width="180" height="44" rx="9" fill="#fdecea" stroke="#c62828"/>
+    <text x="870" y="109" text-anchor="middle" font-weight="bold" fill="#c62828">5 次仍不达标 → 放弃</text>
+
+    <path d="M170,58 L210,58" stroke="#46566b" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+    <path d="M370,58 L340,58" stroke="#46566b" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+    <path d="M520,58 L560,44" stroke="#46566b" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+    <text x="540" y="40" text-anchor="middle" fill="#c62828" font-size="11">否</text>
+    <path d="M650,68 L650,82" stroke="#46566b" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+    <path d="M560,104 L300,104 L300,86" stroke="#46566b" stroke-width="1.8" fill="none" marker-end="url(#arr2)"/>
+    <text x="420" y="118" text-anchor="middle" fill="#5b6675" font-size="11">读新角度，回到“算误差”</text>
+    <path d="M430,94 L430,180 L870,180 L870,68" stroke="#2e7d32" stroke-width="1.8" fill="none" stroke-dasharray="5,4" marker-end="url(#arr2)"/>
+    <text x="560" y="196" text-anchor="middle" fill="#2e7d32" font-size="11">是（1 次即判定；死代码版要求连续 3 帧稳定）</text>
+  </svg>
+  </div>
+  <table>
+    <tr><th style="width:20%">对比项</th><th>生效版（内联）</th><th>死代码版 gyro_turn_pos_test</th></tr>
+    <tr><td>方向映射</td><td>error&gt;0 → <b>ni_yaw_</b></td><td>error&gt;0 → <b>shun_yaw_</b>（相反）</td></tr>
+    <tr><td>比例系数</td><td>Kp=1，补全部误差</td><td>Kp=0.5，只补一半</td></tr>
+    <tr><td>容差</td><td>±1°（现实可行）</td><td>±0.1°（小于 1° 最小步长，达不到）</td></tr>
+    <tr><td>新帧/稳定性</td><td>直接读当前值</td><td>必须新帧 + 连续 3 帧稳定</td></tr>
+    <tr><td>反接保护</td><td>无</td><td>首次反馈反向 &gt;5° 判失败</td></tr>
+    <tr><td>单次修正上限</td><td>无</td><td>≤30°</td></tr>
+  </table>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>闭环只在 PA8 测试代码里，<b>translation() 里的 8 处拐弯仍是开环</b>；两版方向映射相反，现场实测前不要互抄（N8/N16）。</div>
+</section>
+
+<!-- ===== 后续待补 ===== -->
+<section id="s5">
+  <h2>⑤ 后续步骤待补图</h2>
   <table>
     <tr><th style="width:20%">对应文档</th><th>计划补充的图</th></tr>
-    <tr><td>04 陀螺仪闭环</td><td>JY901 数据帧 11 字节分解、闭环转向控制框图（P 控制/迭代修正）</td></tr>
     <tr><td>05 主程序架构</td><td>main.c 状态流转图（生效主循环 vs 死代码区）、judge/translation 调用关系</td></tr>
-    <tr><td>06 串口中断</td><td>USART1 四字节帧状态机、USART2 陀螺仪帧/k 命令状态机</td></tr>
+    <tr><td>06 串口中断</td><td>USART1 四字节帧状态机、USART2 陀螺仪帧/k 命令双状态机</td></tr>
     <tr><td>07 路径规划</td><td>5×5 网格坐标图（禁行区/障碍）、Dijkstra 建图与路线示例</td></tr>
     <tr><td>08 读位置/回位置</td><td>0x36 长帧时序、机械臂定位流程</td></tr>
     <tr><td>09 比赛任务</td><td>8 阶段流程总览</td></tr>
