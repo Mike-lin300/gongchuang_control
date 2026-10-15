@@ -34,3 +34,6 @@ JLinkLog.txt
 
 # 编辑器配置
 .vscode/
+
+# 图解自检截图（本地检查产物，不入库）
+docs/_shots/

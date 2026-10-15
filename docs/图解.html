@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四麦轮小车图解（硬件接线 · ZDT 协议 · 四轮方向）</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='8' y='8' width='84' height='84' rx='16' fill='%230c3c8c'/><circle cx='32' cy='32' r='9' fill='%23ffbe00'/><circle cx='68' cy='32' r='9' fill='%23ffbe00'/><circle cx='32' cy='68' r='9' fill='%23ffbe00'/><circle cx='68' cy='68' r='9' fill='%23ffbe00'/></svg>">
+<style>
+  :root{
+    --ink:#1f2733; --sub:#5b6675; --line:#d3dae3; --bg:#f4f6f9;
+    --blue:#0c3c8c; --blue-bg:#e8f0fc; --gold:#ffbe00; --gold-bg:#fff5d6;
+    --teal:#0b7a75; --teal-bg:#e2f2f1;
+    --green:#2e7d32; --green-bg:#e7f3e8;
+    --red:#c62828; --red-bg:#fdecea;
+    --purple:#6a4c93;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Segoe UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    line-height:1.55;}
+  header{background:linear-gradient(135deg,#0c3c8c,#123a74);color:#fff;padding:26px 20px 20px;}
+  header .wrap{max-width:1080px;margin:0 auto;}
+  header h1{margin:0 0 6px;font-size:22px;}
+  header p{margin:0;color:#cdd9ec;font-size:13px;}
+  nav{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);
+    display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;}
+  nav .wrap{max-width:1080px;margin:0 auto;display:flex;gap:6px;flex-wrap:wrap;}
+  nav a{text-decoration:none;color:var(--blue);font-size:13px;font-weight:600;
+    padding:6px 12px;border-radius:18px;background:var(--blue-bg);}
+  main{max-width:1080px;margin:0 auto;padding:20px 16px 60px;}
+  section{background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:20px 22px;margin:18px 0;}
+  h2{font-size:19px;margin:0 0 4px;color:var(--blue);}
+  h3{font-size:15px;margin:22px 0 10px;}
+  .note{color:var(--sub);font-size:13px;margin:4px 0 12px;}
+  .warn{background:var(--red-bg);border-left:4px solid var(--red);padding:8px 12px;
+    border-radius:6px;font-size:13px;margin:10px 0;}
+  .ok{background:var(--green-bg);border-left:4px solid var(--green);padding:8px 12px;
+    border-radius:6px;font-size:13px;margin:10px 0;}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;}
+  th,td{border:1px solid var(--line);padding:6px 9px;text-align:left;}
+  th{background:#f0f3f8;}
+  td code{color:#b03a2e;font-size:12px;}
+  code{background:#f0f2f5;padding:1px 5px;border-radius:4px;font-size:12.5px;}
+  .svgbox{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff;}
+  /* 协议帧字节块 */
+  .frame{display:flex;flex-wrap:wrap;gap:0;margin:8px 0 4px;overflow-x:auto;}
+  .byte{border:1.5px solid #37435a;border-radius:6px;min-width:86px;margin-right:4px;margin-bottom:6px;
+    text-align:center;font-size:12px;background:#fff;overflow:hidden;}
+  .byte .hex{display:block;font-weight:700;font-family:Consolas,monospace;font-size:13px;padding:5px 4px 3px;}
+  .byte .lbl{display:block;font-size:11px;color:#fff;padding:2px 3px 4px;}
+  .b-addr{background:var(--blue-bg);} .b-addr .lbl{background:var(--blue);}
+  .b-code{background:var(--gold-bg);} .b-code .lbl{background:#a07a00;}
+  .b-dir{background:#ffe3cc;} .b-dir .lbl{background:#bf5c16;}
+  .b-vel{background:var(--green-bg);} .b-vel .lbl{background:var(--green);}
+  .b-acc{background:#dcefe8;} .b-acc .lbl{background:#0b7a75;}
+  .b-pos{background:var(--red-bg);} .b-pos .lbl{background:var(--red);}
+  .b-opt{background:#eaf0f6;} .b-opt .lbl{background:#46566b;}
+  .b-chk{background:#e8e8e8;} .b-chk .lbl{background:#6b6b6b;}
+  .arrow{font-size:20px;color:var(--sub);margin:0 6px;line-height:1;}
+  /* 四轮方向图 */
+  .cars{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;}
+  .car-card{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff;}
+  .car-card.bad{border:1.8px solid var(--red);background:var(--red-bg);}
+  .car-card h4{margin:0 0 2px;font-size:14px;}
+  .car-card .sub{font-size:11.5px;color:var(--sub);margin-bottom:8px;}
+  .car{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:200px;margin:6px auto;
+    padding:14px 10px;border:2px solid #37435a;border-radius:14px;background:#fafbfc;position:relative;}
+  .wheel{border-radius:10px;padding:8px 4px;text-align:center;color:#fff;font-weight:700;font-size:16px;min-height:54px;}
+  .wheel .wl{display:block;font-size:10.5px;font-weight:500;opacity:.92;}
+  .wheel .wb{display:block;font-size:10px;font-weight:500;font-family:Consolas,monospace;opacity:.85;}
+  .w-fwd{background:var(--teal);} .w-bak{background:#8a6d3b;}
+  .carcenter{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;font-size:17px;color:#37435a;}
+  .carcenter span{background:#fff;border:1.5px solid #37435a;border-radius:50%;width:30px;height:30px;
+    display:inline-flex;align-items:center;justify-content:center;font-weight:700;}
+  .carcenter.bad span{border-color:var(--red);color:var(--red);}
+  .bits{font-family:Consolas,monospace;font-size:11.5px;text-align:center;margin-top:8px;color:var(--sub);}
+  .ic-warn{width:13px;height:13px;vertical-align:-2px;margin-right:2px;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin:8px 0;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .sw{width:14px;height:14px;border-radius:4px;display:inline-block;}
+  footer{text-align:center;color:var(--sub);font-size:12px;padding:20px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>四麦轮小车图解（持续扩充）</h1>
+    <p>STM32F103C8T6 · 4× ZDT-X42S 闭环步进 · JY901 陀螺仪　|　对应文档 01 / 02 / 03，证据标“代码/手册 p.xx”</p>
+  </div>
+</header>
+<nav><div class="wrap">
+  <a href="#s1">① 硬件连接</a>
+  <a href="#s2">② ZDT 协议帧</a>
+  <a href="#s3">③ 四轮方向位</a>
+  <a href="#s4">后续待补</a>
+</div></nav>
+<main>
+
+<!-- ===== ① 硬件连接原理图 ===== -->
+<section id="s1">
+  <h2>① 硬件连接原理图</h2>
+  <p class="note">全部连接由代码与 README 核实（115200 8N1）。红色为引脚冲突/待确认项。</p>
+  <div class="svgbox">
+  <svg viewBox="0 0 1040 620" width="100%" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
+    <defs>
+      <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#46566b"/>
+      </marker>
+      <marker id="arrR" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#c62828"/>
+      </marker>
+    </defs>
+    <!-- 主控 -->
+    <rect x="390" y="250" width="260" height="130" rx="12" fill="#0c3c8c"/>
+    <text x="520" y="288" text-anchor="middle" fill="#fff" font-size="15" font-weight="bold">STM32F103C8T6</text>
+    <text x="520" y="308" text-anchor="middle" fill="#cdd9ec" font-size="11">72MHz · 64K Flash · 20K RAM</text>
+    <text x="520" y="330" text-anchor="middle" fill="#ffbe00" font-size="11">引脚连接见各端口标注</text>
+
+    <!-- 电机总线 -->
+    <rect x="30" y="70" width="240" height="220" rx="10" fill="#e2f2f1" stroke="#0b7a75"/>
+    <text x="150" y="92" text-anchor="middle" fill="#0b7a75" font-weight="bold" font-size="13">USART1（A-B 并联总线 115200）</text>
+    <text x="150" y="108" text-anchor="middle" fill="#5b6675" font-size="10.5">PA9 = TX　PA10 = RX</text>
+    <g font-size="11">
+      <rect x="48" y="120" width="204" height="36" rx="7" fill="#fff" stroke="#0b7a75"/>
+      <text x="150" y="143" text-anchor="middle">电机 1（地址 0x01）= 左前 FL</text>
+      <rect x="48" y="162" width="204" height="36" rx="7" fill="#fff" stroke="#0b7a75"/>
+      <text x="150" y="185" text-anchor="middle">电机 2（地址 0x02）= 右前 FR 镜像</text>
+      <rect x="48" y="204" width="204" height="36" rx="7" fill="#fff" stroke="#0b7a75"/>
+      <text x="150" y="227" text-anchor="middle">电机 3（地址 0x03）= 左后 RL</text>
+      <rect x="48" y="246" width="204" height="36" rx="7" fill="#fff" stroke="#0b7a75"/>
+      <text x="150" y="269" text-anchor="middle">电机 4（地址 0x04）= 右后 RR 镜像</text>
+    </g>
+    <path d="M270,180 C330,180 330,285 390,285" fill="none" stroke="#0b7a75" stroke-width="2" marker-end="url(#arr)"/>
+    <path d="M390,300 C330,300 330,200 270,200" fill="none" stroke="#0b7a75" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 陀螺仪 -->
+    <rect x="770" y="60" width="240" height="76" rx="10" fill="#e8f0fc" stroke="#0c3c8c"/>
+    <text x="890" y="86" text-anchor="middle" fill="#0c3c8c" font-weight="bold" font-size="13">JY901 兼容陀螺仪</text>
+    <text x="890" y="105" text-anchor="middle" font-size="11">帧 55 53 … 11 字节（yaw 0.01°）</text>
+    <text x="890" y="122" text-anchor="middle" fill="#c62828" font-size="11">安装位置 / Z 轴朝向待确认</text>
+    <path d="M770,100 C700,100 700,300 650,300" fill="none" stroke="#0c3c8c" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="662" y="176" text-anchor="middle" font-size="10.5" fill="#0c3c8c">PA3(RX) 接 TX</text>
+
+    <!-- 电脑 -->
+    <rect x="770" y="156" width="240" height="68" rx="10" fill="#fff5d6" stroke="#a07a00"/>
+    <text x="890" y="182" text-anchor="middle" fill="#7a5d00" font-weight="bold" font-size="13">电脑串口（调试）</text>
+    <text x="890" y="201" text-anchor="middle" font-size="11">发 “k:角度” 改目标角</text>
+    <text x="890" y="217" text-anchor="middle" font-size="10.5" fill="#5b6675">与陀螺仪共用 USART2（PA2/PA3）</text>
+    <path d="M770,195 C720,195 720,330 650,330" fill="none" stroke="#a07a00" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="672" y="260" text-anchor="middle" font-size=10.5 fill="#7a5d00">USART2 共线</text>
+
+    <!-- USART3 -->
+    <rect x="770" y="252" width="240" height="72" rx="10" fill="#f3f0f8" stroke="#6a4c93"/>
+    <text x="890" y="278" text-anchor="middle" fill="#6a4c93" font-weight="bold" font-size="13">USART3 角度文本输出</text>
+    <text x="890" y="297" text-anchor="middle" font-size="11">PB10(TX)，只发，115200</text>
+    <text x="890" y="314" text-anchor="middle" fill="#c62828" font-size="11">接收方：上位机/机械臂？待确认</text>
+    <path d="M650,350 C720,350 720,288 770,288" fill="none" stroke="#6a4c93" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- OLED -->
+    <rect x="30" y="380" width="250" height="70" rx="10" fill="#e8f0fc" stroke="#0c3c8c"/>
+    <text x="155" y="406" text-anchor="middle" fill="#0c3c8c" font-weight="bold" font-size="13">OLED 0.96"（地址 0x78）</text>
+    <text x="155" y="425" text-anchor="middle" font-size="11">软件 I2C：PB15=SCL　PB14=SDA</text>
+    <text x="155" y="441" text-anchor="middle" fill="#5b6675" font-size="10.5">旧版 PA0/PA1 已弃用</text>
+    <path d="M280,405 C340,405 340,350 390,350" fill="none" stroke="#0c3c8c" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- 按键 -->
+    <rect x="340" y="460" width="330" height="110" rx="10" fill="#fdecea" stroke="#c62828"/>
+    <text x="505" y="486" text-anchor="middle" fill="#c62828" font-weight="bold" font-size="13">按键</text>
+    <text x="505" y="508" text-anchor="middle" font-size="11">PB1 键1（上拉）　PB11 键2　PA8 临时按键（低电平，20ms 消抖）</text>
+    <text x="505" y="530" text-anchor="middle" font-size="11" fill="#c62828">PB10 键3 与 USART3_TX 冲突 → 键3 不可用</text>
+    <text x="505" y="552" text-anchor="middle" font-size="11" fill="#c62828">PA8 初始化代码位于死代码区（main.c:322-329），实际浮空输入</text>
+    <path d="M505,460 L505,380" fill="none" stroke="#c62828" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#arrR)"/>
+
+    <!-- LED -->
+    <rect x="720" y="460" width="290" height="110" rx="10" fill="#fdecea" stroke="#c62828"/>
+    <text x="865" y="486" text-anchor="middle" fill="#c62828" font-weight="bold" font-size="13">LED 指示灯</text>
+    <text x="865" y="508" text-anchor="middle" font-size="11">LED1 = PA1　LED3 = PC13</text>
+    <text x="865" y="530" text-anchor="middle" font-size="11" fill="#c62828">LED2 = PA2 与 USART2_TX 冲突 → 不可用</text>
+    <text x="865" y="552" text-anchor="middle" fill="#5b6675" font-size="10.5">（初始化顺序：USART2 后开 LED2 会覆盖串口）</text>
+    <path d="M720,480 C660,460 660,375 650,360" fill="none" stroke="#c62828" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#arrR)"/>
+
+    <!-- 图例 -->
+    <g font-size="11" fill="#46566b">
+      <rect x="30" y="590" width="14" height="10" fill="#0b7a75"/><text x="50" y="599">电机总线</text>
+      <rect x="130" y="590" width="14" height="10" fill="#0c3c8c"/><text x="150" y="599">串口/显示</text>
+      <rect x="240" y="590" width="14" height="10" fill="#c62828"/><text x="260" y="599">冲突/待确认</text>
+    </g>
+  </svg>
+  </div>
+  <div class="warn">待确认：① 电机是否上电自动使能（生效主循环没有调用使能）；② 陀螺仪安装朝向；③ USART3 接收方；④ 机械臂电机是否另挂总线（见开发笔记本 N1/N8/N13）。</div>
+</section>
+
+<!-- ===== ② ZDT 协议帧 ===== -->
+<section id="s2">
+  <h2>② ZDT-X42S 串口协议帧（手册 V1.0.5）</h2>
+  <p class="note">每帧固定以校验字节 <code>0x6B</code> 结尾（出厂默认，不是校验和）；电机对每条命令回 <code>[addr][code] 02 6B</code>，02=正确，E2=参数错，EE=格式错。</p>
+  <div class="legend">
+    <span><i class="sw" style="background:#e8f0fc"></i>地址</span>
+    <span><i class="sw" style="background:#fff5d6"></i>功能码</span>
+    <span><i class="sw" style="background:#ffe3cc"></i>方向</span>
+    <span><i class="sw" style="background:#e7f3e8"></i>速度/加速度</span>
+    <span><i class="sw" style="background:#fdecea"></i>位置脉冲</span>
+    <span><i class="sw" style="background:#eaf0f6"></i>模式/同步</span>
+  </div>
+
+  <h3>2.1 位置运动帧（功能码 0xFD，13 字节，手册 p.57）——平移/旋转都用它</h3>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">01~04</span><span class="lbl">电机地址</span></div>
+    <div class="byte b-code"><span class="hex">FD</span><span class="lbl">功能码</span></div>
+    <div class="byte b-dir"><span class="hex">00/01</span><span class="lbl">方向 CW/CCW</span></div>
+    <div class="byte b-vel"><span class="hex">00 46</span><span class="lbl">速度 70 RPM</span></div>
+    <div class="byte b-acc"><span class="hex">C8</span><span class="lbl">加速度 200 档</span></div>
+    <div class="byte b-pos"><span class="hex">00 00</span><span class="lbl">脉冲高 2 字节</span></div>
+    <div class="byte b-pos"><span class="hex">XX XX</span><span class="lbl">脉冲低 2 字节</span></div>
+    <div class="byte b-opt"><span class="hex">00</span><span class="lbl">模式 00 相对</span></div>
+    <div class="byte b-opt"><span class="hex">01</span><span class="lbl">同步 01 缓存</span></div>
+    <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
+  </div>
+  <p class="note">脉冲大端序 4 字节；速度 0~0BB8 = 0~3000 RPM；加速度 0~255；模式 00=相对上次目标 / 01=绝对 / 02=相对当前位置；同步位 01 表示"先缓存不动"。</p>
+  <div class="ok">例：电机 1 前进 100mm（脉冲 1300 = 0x0514，方向 01）：<br>
+  <code>01 FD 01 00 46 C8 00 00 05 14 00 01 6B</code>（四个电机各发一帧，间隔 5ms）</div>
+
+  <h3>2.2 使能帧（功能码 F3 AB，手册 p.50）——锁轴</h3>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">01~04</span><span class="lbl">地址</span></div>
+    <div class="byte b-code"><span class="hex">F3</span><span class="lbl">功能码</span></div>
+    <div class="byte b-code"><span class="hex">AB</span><span class="lbl">辅助码</span></div>
+    <div class="byte b-dir"><span class="hex">01/00</span><span class="lbl">01 使能 / 00 失能</span></div>
+    <div class="byte b-opt"><span class="hex">00</span><span class="lbl">固定</span></div>
+    <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
+  </div>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>当前生效主循环未调用使能（在死代码区）；若电机没被上位机设成"上电使能"，会松轴不动。单条测试：<code>01 F3 AB 01 00 6B</code></div>
+
+  <h3>2.3 同步触发帧（广播，手册 p.37 / p.60）——4 轮同时起步</h3>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">00</span><span class="lbl">广播地址</span></div>
+    <div class="byte b-code"><span class="hex">FF</span><span class="lbl">同步触发</span></div>
+    <div class="byte b-opt"><span class="hex">66</span><span class="lbl">固定</span></div>
+    <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
+  </div>
+  <p class="note">先把 4 条带同步位 01 的运动帧发完（每帧间延时 5ms 防粘包），再发此帧，4 轮同时启动；否则各电机排队约 25ms 起步导致跑偏。</p>
+
+  <h3>2.4 到位查询（功能码 3A，手册 p.73-74）——judge() 在做的事</h3>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">01</span><span class="lbl">地址</span></div>
+    <div class="byte b-code"><span class="hex">3A</span><span class="lbl">查询状态</span></div>
+    <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
+  </div>
+  <span class="arrow">→</span>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">01</span><span class="lbl">地址</span></div>
+    <div class="byte b-code"><span class="hex">3A</span><span class="lbl">功能码</span></div>
+    <div class="byte b-vel"><span class="hex">03</span><span class="lbl">状态字节</span></div>
+    <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
+  </div>
+  <table>
+    <tr><th style="width:14%">bit</th><th>7</th><th>6</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th><th>0</th></tr>
+    <tr><td><b>含义</b></td><td>掉电标志</td><td>保留</td><td>右限位</td><td>左限位</td><td>堵转保护</td><td>堵转</td><td>位置到达</td><td>已使能</td></tr>
+    <tr><td><b>0x03</b></td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td></tr>
+  </table>
+  <div class="ok">代码要求状态字节严格等于 <b>0x03</b> = 已使能 + 已到位，且无堵转/掉电标志（比手册示例的位与判断更严格）；四个电机轮询，每轮 50ms，60000 次查询兜底超时。</div>
+
+  <h3>2.5 读位置回包（功能码 36，手册 p.72）——8 字节，当前中断解析器收不了</h3>
+  <div class="frame">
+    <div class="byte b-addr"><span class="hex">01~04</span><span class="lbl">地址</span></div>
+    <div class="byte b-code"><span class="hex">36</span><span class="lbl">功能码</span></div>
+    <div class="byte b-dir"><span class="hex">00/01</span><span class="lbl">正/负号</span></div>
+    <div class="byte b-pos"><span class="hex">XX</span><span class="lbl">位置 B3</span></div>
+    <div class="byte b-pos"><span class="hex">XX</span><span class="lbl">位置 B2</span></div>
+    <div class="byte b-pos"><span class="hex">XX</span><span class="lbl">位置 B1</span></div>
+    <div class="byte b-pos"><span class="hex">XX</span><span class="lbl">位置 B0</span></div>
+    <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
+  </div>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>USART1 中断现在只解析 4 字节帧（Serial.c:206-226），8 字节回包会被截断，<code>motor_read_pos()</code> 查 <code>RxPacket[7]</code> 永远不成立（回归于寻路重构提交）。另：Emm 固件下该值是 <b>0~65535 单圈环绕值</b>，不是多圈脉冲计数，恢复机械臂功能前需核实固件类型（笔记本 N3/N13）。</div>
+</section>
+
+<!-- ===== ③ 四轮方向位 ===== -->
+<section id="s3">
+  <h2>③ 四轮方向位（app/motor.c 代码实测）</h2>
+  <p class="note">方向位是电机命令第 3 字节。右轮（FR/RR）镜像安装，物理方向与左轮相反：<b>左轮 01=前进，右轮 00=前进</b>。下方箭头为按此映射推导的物理轮向。</p>
+  <div class="cars">
+    <!-- 前进 -->
+    <div class="car-card">
+      <h4>qianjin_ 前进</h4>
+      <div class="sub">方向位 [1,0,1,0]</div>
+      <div class="car">
+        <div class="wheel w-fwd">↑<span class="wl">FL 左前</span><span class="wb">位 1</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">FR 右前</span><span class="wb">位 0</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RL 左后</span><span class="wb">位 1</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RR 右后</span><span class="wb">位 0</span></div>
+        <div class="carcenter"><span>↑</span></div>
+      </div>
+      <div class="bits">脉冲 = mm × 13008 / 1000</div>
+    </div>
+    <!-- 后退 -->
+    <div class="car-card">
+      <h4>houtui_ 后退</h4>
+      <div class="sub">方向位 [0,1,0,1]</div>
+      <div class="car">
+        <div class="wheel w-bak">↓<span class="wl">FL 左前</span><span class="wb">位 0</span></div>
+        <div class="wheel w-bak">↓<span class="wl">FR 右前</span><span class="wb">位 1</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RL 左后</span><span class="wb">位 0</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RR 右后</span><span class="wb">位 1</span></div>
+        <div class="carcenter"><span>↓</span></div>
+      </div>
+      <div class="bits">脉冲 = mm × 13008 / 1000</div>
+    </div>
+    <!-- 顺时针 -->
+    <div class="car-card">
+      <h4>shun_yaw_ 顺时针（名）</h4>
+      <div class="sub">方向位 [0,0,0,0]，四轮都 0；左退右进，实际转向待现场验证</div>
+      <div class="car">
+        <div class="wheel w-bak">↓<span class="wl">FL</span><span class="wb">位 0</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">FR</span><span class="wb">位 0</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RL</span><span class="wb">位 0</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RR</span><span class="wb">位 0</span></div>
+        <div class="carcenter"><span>↻</span></div>
+      </div>
+      <div class="bits">脉冲 = deg × 17208 / 360</div>
+    </div>
+    <!-- 逆时针 -->
+    <div class="car-card">
+      <h4>ni_yaw_ 逆时针（名）</h4>
+      <div class="sub">方向位 [1,1,1,1]，四轮都 1；左进右退，实际转向待现场验证</div>
+      <div class="car">
+        <div class="wheel w-fwd">↑<span class="wl">FL</span><span class="wb">位 1</span></div>
+        <div class="wheel w-bak">↓<span class="wl">FR</span><span class="wb">位 1</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RL</span><span class="wb">位 1</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RR</span><span class="wb">位 1</span></div>
+        <div class="carcenter"><span>↺</span></div>
+      </div>
+      <div class="bits">脉冲 = deg × 17208 / 360</div>
+    </div>
+    <!-- 左平移 -->
+    <div class="car-card bad">
+      <h4>zuo_ 左平移（疑似错误）</h4>
+      <div class="sub">方向位 [1,1,1,1] —— 与 ni_yaw_ 完全相同</div>
+      <div class="car">
+        <div class="wheel w-fwd">↑<span class="wl">FL</span><span class="wb">位 1</span></div>
+        <div class="wheel w-bak">↓<span class="wl">FR</span><span class="wb">位 1</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RL</span><span class="wb">位 1</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RR</span><span class="wb">位 1</span></div>
+        <div class="carcenter bad"><span>×</span></div>
+      </div>
+      <div class="bits">主流程未使用；学长 README 已自述疑似未更新</div>
+    </div>
+    <!-- 右平移 -->
+    <div class="car-card bad">
+      <h4>you_ 右平移（疑似错误）</h4>
+      <div class="sub">方向位 [0,0,0,0] —— 与 shun_yaw_ 完全相同</div>
+      <div class="car">
+        <div class="wheel w-bak">↓<span class="wl">FL</span><span class="wb">位 0</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">FR</span><span class="wb">位 0</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RL</span><span class="wb">位 0</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RR</span><span class="wb">位 0</span></div>
+        <div class="carcenter bad"><span>×</span></div>
+      </div>
+      <div class="bits">标准 X 型麦轮横移应对角轮同向；待现场确认辊子排列后改</div>
+    </div>
+  </div>
+  <div class="warn">
+    ① 标准 X 型麦轮推导：左退右进 = 俯视逆时针（shun 名实相反），左进右退 = 顺时针（ni 名实相反）；但陀螺仪闭环实测 ni 使角度增大且稳定，说明陀螺仪 Z 轴方向或轮组排列可能不同，<b>必须现场小角度实测</b>。<br>
+    ② 旧版（8b3e4dd）旋转只驱动 FL+FR，RL/RR 被注释；aa16ae4 改为四轮。
+  </div>
+</section>
+
+<!-- ===== 后续待补 ===== -->
+<section id="s4">
+  <h2>④ 后续步骤待补图</h2>
+  <table>
+    <tr><th style="width:20%">对应文档</th><th>计划补充的图</th></tr>
+    <tr><td>04 陀螺仪闭环</td><td>JY901 数据帧 11 字节分解、闭环转向控制框图（P 控制/迭代修正）</td></tr>
+    <tr><td>05 主程序架构</td><td>main.c 状态流转图（生效主循环 vs 死代码区）、judge/translation 调用关系</td></tr>
+    <tr><td>06 串口中断</td><td>USART1 四字节帧状态机、USART2 陀螺仪帧/k 命令状态机</td></tr>
+    <tr><td>07 路径规划</td><td>5×5 网格坐标图（禁行区/障碍）、Dijkstra 建图与路线示例</td></tr>
+    <tr><td>08 读位置/回位置</td><td>0x36 长帧时序、机械臂定位流程</td></tr>
+    <tr><td>09 比赛任务</td><td>8 阶段流程总览</td></tr>
+  </table>
+</section>
+
+</main>
+<footer>四麦轮小车项目图解 · 与 docs/ 文档同步更新 · 2026-10-15</footer>
+</body>
+</html>
