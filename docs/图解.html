@@ -87,7 +87,7 @@
 <header>
   <div class="wrap">
     <h1>四麦轮小车图解（持续扩充）</h1>
-    <p>STM32F103C8T6 · 4× ZDT-X42S 闭环步进 · JY901 陀螺仪　|　对应文档 01 / 02 / 03 / 04，证据标“代码/手册 p.xx”</p>
+    <p>STM32F103C8T6 · 4× ZDT-X42S 闭环步进 · JY901 陀螺仪　|　对应文档 01 / 02 / 03 / 04 / 05，证据标“代码/手册 p.xx”</p>
   </div>
 </header>
 <nav><div class="wrap">
@@ -95,7 +95,8 @@
   <a href="#s2">② ZDT 协议帧</a>
   <a href="#s3">③ 四轮方向位</a>
   <a href="#s4">④ 陀螺仪闭环</a>
-  <a href="#s5">后续待补</a>
+  <a href="#s5">⑤ 主程序架构</a>
+  <a href="#s6">后续待补</a>
 </div></nav>
 <main>
 
@@ -439,12 +440,111 @@
   <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>闭环只在 PA8 测试代码里，<b>translation() 里的 8 处拐弯仍是开环</b>；两版方向映射相反，现场实测前不要互抄（N8/N16）。</div>
 </section>
 
-<!-- ===== 后续待补 ===== -->
+<!-- ===== ⑤ 主程序架构 ===== -->
 <section id="s5">
-  <h2>⑤ 后续步骤待补图</h2>
+  <h2>⑤ 主程序架构（main.c 代码块布局 + 三层调用）</h2>
+  <h3>5.1 main.c 从上到下：只有一个 while(1) 在跑，其后全部不可达</h3>
+  <div class="svgbox">
+  <svg viewBox="0 0 980 500" width="100%" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
+    <defs>
+      <marker id="arr3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#46566b"/>
+      </marker>
+    </defs>
+    <!-- 初始化 -->
+    <rect x="120" y="16" width="500" height="44" rx="9" fill="#e8f0fc" stroke="#0c3c8c"/>
+    <text x="370" y="36" text-anchor="middle" font-weight="bold" fill="#0c3c8c">初始化（236-242 行）</text>
+    <text x="370" y="52" text-anchor="middle" fill="#5b6675">LED → OLED → Key → USART1 → Gyro → USART3 → USART2</text>
+    <path d="M370,60 L370,72" stroke="#46566b" stroke-width="1.8" marker-end="url(#arr3)"/>
+
+    <!-- 生效 while -->
+    <rect x="120" y="74" width="500" height="62" rx="9" fill="#e7f3e8" stroke="#2e7d32" stroke-width="2.4"/>
+    <text x="370" y="97" text-anchor="middle" font-weight="bold" fill="#2e7d32" font-size="13">★ while(1)（264-295 行）：PA8 闭环转 90° + USART3 输出 angle</text>
+    <text x="370" y="116" text-anchor="middle" fill="#2e7d32">永真循环，实际在跑的固件逻辑</text>
+    <text x="700" y="110" font-weight="bold" fill="#2e7d32">执行</text>
+
+    <!-- 不可达分界线 -->
+    <line x1="60" y1="160" x2="920" y2="160" stroke="#c62828" stroke-width="2" stroke-dasharray="9,6"/>
+    <rect x="360" y="147" width="260" height="24" rx="12" fill="#fff" stroke="#c62828"/>
+    <text x="490" y="164" text-anchor="middle" font-weight="bold" fill="#c62828">while(1) 不退出 · 以下不可达</text>
+
+    <!-- 死代码块 -->
+    <rect x="120" y="186" width="500" height="42" rx="9" fill="#f3f3f5" stroke="#8a93a3"/>
+    <text x="370" y="204" text-anchor="middle" fill="#5b6675">298-311 行：开环 shun_yaw_(90)/ni_yaw_(90) 测试残留</text>
+    <text x="370" y="220" text-anchor="middle" fill="#8a93a3">更早的开环测试</text>
+
+    <rect x="120" y="238" width="500" height="42" rx="9" fill="#fdecea" stroke="#c62828"/>
+    <text x="370" y="256" text-anchor="middle" font-weight="bold" fill="#c62828">322-333 行：PA8 上拉初始化 / path_planner_init / motor_enable_all</text>
+    <text x="370" y="272" text-anchor="middle" fill="#c62828">恢复路线必须前移到生效循环之前（N1/N2）</text>
+
+    <rect x="120" y="290" width="500" height="42" rx="9" fill="#f3f3f5" stroke="#8a93a3"/>
+    <text x="370" y="308" text-anchor="middle" fill="#5b6675">338-355 行：另一个 while(1)，死代码版 gyro_turn_pos_test()</text>
+    <text x="370" y="324" text-anchor="middle" fill="#8a93a3">04 篇的“死代码版”</text>
+
+    <rect x="120" y="342" width="500" height="50" rx="9" fill="#fdecea" stroke="#c62828"/>
+    <text x="370" y="362" text-anchor="middle" font-weight="bold" fill="#c62828">363-393 行：自动路线 switch（while(1)）</text>
+    <text x="370" y="379" text-anchor="middle" fill="#c62828">case 8/9 永不执行；case 7 注释目标写错（N22）</text>
+    <text x="700" y="370" font-weight="bold" fill="#c62828">死代码</text>
+  </svg>
+  </div>
+
+  <h3>5.2 三层调用关系（路线层当前死代码，动作层一直在跑）</h3>
+  <div class="svgbox">
+  <svg viewBox="0 0 980 330" width="100%" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
+    <defs>
+      <marker id="arr4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#46566b"/>
+      </marker>
+    </defs>
+    <rect x="250" y="18" width="480" height="50" rx="10" fill="#fdecea" stroke="#c62828"/>
+    <text x="490" y="39" text-anchor="middle" font-weight="bold" fill="#c62828">路线层　switch(step)：case 0~9，每个 case 只说“下一个目标坐标”</text>
+    <text x="490" y="57" text-anchor="middle" fill="#8a93a3">成功 step+1，失败 step=99；100 完成停机</text>
+
+    <path d="M490,68 L490,84" stroke="#46566b" stroke-width="1.8" marker-end="url(#arr4)"/>
+    <rect x="250" y="86" width="480" height="50" rx="10" fill="#fff5d6" stroke="#a07a00"/>
+    <text x="490" y="107" text-anchor="middle" font-weight="bold" fill="#7a5d00">调度层　go_to(&amp;cx,&amp;cy, tx,ty)：path_plan 得关键点 → 逐段 translation</text>
+    <text x="490" y="125" text-anchor="middle" fill="#5b6675">指针维护当前位置；key_point_num&lt;2 判失败</text>
+
+    <path d="M490,136 L490,152" stroke="#46566b" stroke-width="1.8" marker-end="url(#arr4)"/>
+    <rect x="250" y="154" width="480" height="50" rx="10" fill="#e2f2f1" stroke="#0b7a75"/>
+    <text x="490" y="175" text-anchor="middle" font-weight="bold" fill="#0b7a75">动作编排层　translation()：朝向状态机 dir（1北/2西/3南/4东）</text>
+    <text x="490" y="193" text-anchor="middle" fill="#5b6675">朝向不对先转 90°（当前开环），再 qianjin/houtui 平移</text>
+
+    <path d="M490,204 L490,220" stroke="#46566b" stroke-width="1.8" marker-end="url(#arr4)"/>
+    <rect x="180" y="222" width="330" height="52" rx="10" fill="#e8f0fc" stroke="#0c3c8c"/>
+    <text x="345" y="243" text-anchor="middle" font-weight="bold" fill="#0c3c8c">动作层　motor.c</text>
+    <text x="345" y="261" text-anchor="middle" fill="#5b6675">qianjin/houtui/shun/ni 组帧+同步帧</text>
+    <rect x="530" y="222" width="300" height="52" rx="10" fill="#f3f0f8" stroke="#6a4c93"/>
+    <text x="680" y="243" text-anchor="middle" font-weight="bold" fill="#6a4c93">到位确认　judge()</text>
+    <text x="680" y="261" text-anchor="middle" fill="#5b6675">轮询 4 电机 0x3A 状态=0x03</text>
+
+    <path d="M345,274 L345,294" stroke="#46566b" stroke-width="1.8" marker-end="url(#arr4)"/>
+    <rect x="250" y="296" width="190" height="26" rx="8" fill="#f3f3f5" stroke="#8a93a3"/>
+    <text x="345" y="313" text-anchor="middle" fill="#5b6675">驱动层　Serial.c / USART1</text>
+  </svg>
+  </div>
+
+  <h3>5.3 路线 switch 的点序列（main.c:375-384，绕场测试）</h3>
+  <table>
+    <tr><th style="width:10%">case</th><th style="width:26%">目标 (x,y)</th><th>说明</th></tr>
+    <tr><td>0</td><td>(2250,1200)</td><td>从起点 (2250,2250) 向南</td></tr>
+    <tr><td>1</td><td>(1200,2250)</td><td>对角，由规划器绕行</td></tr>
+    <tr><td>2</td><td>(1200,150)</td><td>向南贯穿</td></tr>
+    <tr><td>3</td><td>(150,1200)</td><td>对角绕行</td></tr>
+    <tr><td>4</td><td>(1200,2250)</td><td>与 case 1 终点相同</td></tr>
+    <tr><td>5</td><td>(1200,150)</td><td>与 case 2 完全重复</td></tr>
+    <tr><td>6</td><td>(150,1200)</td><td>与 case 3 完全重复</td></tr>
+    <tr><td>7</td><td>(2250,2250)=PATH_TARGET</td><td>回终点，成功后 step=100；行尾注释写成 (1200,2250)，抄错</td></tr>
+    <tr><td>8 / 9</td><td>(1200,150) / (2250,2250)</td><td><b>永不执行</b>：没有分支会把 step 设为 8/9</td></tr>
+  </table>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>translation 的 8 处转向都写死 <code>Delay_ms(1000)</code> 再 judge，平动后却直接 judge（N21）；且 shun/ni 的用法依赖 N8/N16 的方向结论，闭环接通前不能照搬。</div>
+</section>
+
+<!-- ===== 后续待补 ===== -->
+<section id="s6">
+  <h2>⑥ 后续步骤待补图</h2>
   <table>
     <tr><th style="width:20%">对应文档</th><th>计划补充的图</th></tr>
-    <tr><td>05 主程序架构</td><td>main.c 状态流转图（生效主循环 vs 死代码区）、judge/translation 调用关系</td></tr>
     <tr><td>06 串口中断</td><td>USART1 四字节帧状态机、USART2 陀螺仪帧/k 命令双状态机</td></tr>
     <tr><td>07 路径规划</td><td>5×5 网格坐标图（禁行区/障碍）、Dijkstra 建图与路线示例</td></tr>
     <tr><td>08 读位置/回位置</td><td>0x36 长帧时序、机械臂定位流程</td></tr>
