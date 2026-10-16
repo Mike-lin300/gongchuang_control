@@ -101,9 +101,9 @@ void zuo_(uint32_t mm)
     Serial_SendArray(cmd, 13); Delay_ms(5);
     cmd[0] = 0x02; cmd[2] = 0x01;   /* FR */
     Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x03; cmd[2] = 0x01;   /* RL */
+    cmd[0] = 0x03; cmd[2] = 0x00;   /* RL */
     Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x04; cmd[2] = 0x01;   /* RR */
+    cmd[0] = 0x04; cmd[2] = 0x00;   /* RR */
     Serial_SendArray(cmd, 13); Delay_ms(5);
 
     Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
@@ -125,9 +125,9 @@ void you_(uint32_t mm)
     Serial_SendArray(cmd, 13); Delay_ms(5);
     cmd[0] = 0x02; cmd[2] = 0x00;   /* FR */
     Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x03; cmd[2] = 0x00;   /* RL */
+    cmd[0] = 0x03; cmd[2] = 0x01;   /* RL */
     Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x04; cmd[2] = 0x00;   /* RR */
+    cmd[0] = 0x04; cmd[2] = 0x01;   /* RR */
     Serial_SendArray(cmd, 13); Delay_ms(5);
 
     Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
