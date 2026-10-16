@@ -191,7 +191,7 @@
     </g>
   </svg>
   </div>
-  <div class="warn">待确认：① 电机是否上电自动使能（生效主循环没有调用使能）；② 陀螺仪安装朝向；③ USART3 接收方；④ 机械臂电机是否另挂总线（见开发笔记本 N1/N8/N13）。</div>
+  <div class="warn">待确认：② 陀螺仪安装朝向；③ USART3 接收方；④ 机械臂电机是否另挂总线（见开发笔记本 N13）。① 电机使能：motor_enable_all() 已前移到主循环前（2026-10-16 深夜，main.c 工作区待提交，N1）。</div>
   <div class="ok">2026-10-16 现场：实物 FL/FR、RL/RR 电机反装（左右位置对调），已通过指令地址对调处理，前/后/顺/逆现象正确（N24）。图中地址为仓库代码的角色映射，调试以实物为准。</div>
 </section>
 
@@ -234,7 +234,7 @@
     <div class="byte b-opt"><span class="hex">00</span><span class="lbl">固定</span></div>
     <div class="byte b-chk"><span class="hex">6B</span><span class="lbl">校验</span></div>
   </div>
-  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>当前生效主循环未调用使能（在死代码区）；若电机没被上位机设成"上电使能"，会松轴不动。单条测试：<code>01 F3 AB 01 00 6B</code></div>
+  <div class="ok">2026-10-16 深夜：<code>motor_enable_all()</code> 已前移到初始化序列之后（main.c:244，工作区待提交，N1）。单条手动测试帧：<code>01 F3 AB 01 00 6B</code>。</div>
 
   <h3>2.3 同步触发帧（广播，手册 p.37 / p.60）——4 轮同时起步</h3>
   <div class="frame">
@@ -381,7 +381,7 @@
         <div class="wheel w-fwd">↑<span class="wl">RR</span><span class="wb">位 0</span></div>
         <div class="carcenter"><span>↻</span></div>
       </div>
-      <div class="bits">脉冲 = deg × 17208 / 360</div>
+      <div class="bits">脉冲 = deg × 18373 / 360（90°=4593，2026-10-16 标定 0b510b7）</div>
     </div>
     <!-- 逆时针 -->
     <div class="car-card">
@@ -394,37 +394,37 @@
         <div class="wheel w-bak">↓<span class="wl">RR</span><span class="wb">位 1</span></div>
         <div class="carcenter"><span>↺</span></div>
       </div>
-      <div class="bits">脉冲 = deg × 17208 / 360</div>
+      <div class="bits">脉冲 = deg × 18373 / 360（90°=4593，2026-10-16 标定 0b510b7）</div>
     </div>
     <!-- 左平移 -->
-    <div class="car-card bad">
-      <h4>zuo_ 左平移（疑似错误）</h4>
-      <div class="sub">方向位 [1,1,1,1] —— 与 ni_yaw_ 完全相同</div>
+    <div class="car-card">
+      <h4>zuo_ 左平移（2026-10-16 已修复，2d0a2ce）</h4>
+      <div class="sub">方向位 [1,1,0,0] —— 对角轮同向，现场实测不再打转</div>
       <div class="car">
         <div class="wheel w-fwd">↑<span class="wl">FL</span><span class="wb">位 1</span></div>
         <div class="wheel w-bak">↓<span class="wl">FR</span><span class="wb">位 1</span></div>
-        <div class="wheel w-fwd">↑<span class="wl">RL</span><span class="wb">位 1</span></div>
-        <div class="wheel w-bak">↓<span class="wl">RR</span><span class="wb">位 1</span></div>
-        <div class="carcenter bad"><span>×</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RL</span><span class="wb">位 0</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RR</span><span class="wb">位 0</span></div>
+        <div class="carcenter"><span>←</span></div>
       </div>
-      <div class="bits">主流程未使用；学长 README 已自述疑似未更新</div>
+      <div class="bits">脉冲 = mm × 13008 / 1000；横移每 100cm 约少 5cm（N25）</div>
     </div>
     <!-- 右平移 -->
-    <div class="car-card bad">
-      <h4>you_ 右平移（疑似错误）</h4>
-      <div class="sub">方向位 [0,0,0,0] —— 与 shun_yaw_ 完全相同</div>
+    <div class="car-card">
+      <h4>you_ 右平移（2026-10-16 已修复，2d0a2ce）</h4>
+      <div class="sub">方向位 [0,0,1,1] —— 对角轮同向，与左移相反</div>
       <div class="car">
         <div class="wheel w-bak">↓<span class="wl">FL</span><span class="wb">位 0</span></div>
         <div class="wheel w-fwd">↑<span class="wl">FR</span><span class="wb">位 0</span></div>
-        <div class="wheel w-bak">↓<span class="wl">RL</span><span class="wb">位 0</span></div>
-        <div class="wheel w-fwd">↑<span class="wl">RR</span><span class="wb">位 0</span></div>
-        <div class="carcenter bad"><span>×</span></div>
+        <div class="wheel w-fwd">↑<span class="wl">RL</span><span class="wb">位 1</span></div>
+        <div class="wheel w-bak">↓<span class="wl">RR</span><span class="wb">位 1</span></div>
+        <div class="carcenter"><span>→</span></div>
       </div>
-      <div class="bits">标准 X 型麦轮横移应对角轮同向；待现场确认辊子排列后改</div>
+      <div class="bits">脉冲 = mm × 13008 / 1000；横移每 100cm 约少 5cm（N25）</div>
     </div>
   </div>
   <div class="ok">
-    <b>2026-10-16 现场结论：</b>名实矛盾的根因是 FL/FR、RL/RR 电机反装（N24），指令地址对调后 shun/ni 实际转向与命名一致，代码保留不回改；换电机/重装后需重新核对。<b>横移 zuo_/you 仍未测试（N4）。</b>
+    <b>2026-10-16 现场结论：</b>名实矛盾的根因是 FL/FR、RL/RR 电机反装（N24），指令地址对调后 shun/ni 实际转向与命名一致，代码保留不回改；横移 zuo/you 已改为对角模式（[1,1,0,0]/[0,0,1,1]，提交 2d0a2ce）并实测不再打转（N4 关闭，距离偏短约 5% 见 N25）。旋转标定 18373：大理石 361.4°、白布 358.9°（0b510b7）。
   </div>
   <div class="note">
     ② 旧版（8b3e4dd）旋转只驱动 FL+FR，RL/RR 被注释；aa16ae4 改为四轮。
@@ -500,13 +500,14 @@
     <tr><td>反接保护</td><td>无</td><td>首次反馈反向 &gt;5° 判失败</td></tr>
     <tr><td>单次修正上限</td><td>无</td><td>≤30°</td></tr>
   </table>
-  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>闭环只在 PA8 测试代码里，<b>translation() 里的 8 处拐弯仍是开环</b>（N19）；两版方向映射相反的问题已随现场反装定性（N24），以生效版（现场正确）为准，死代码版合并时删除。</div>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>PA8 闭环测试块 2026-10-16 深夜已整体注释停用；<b>translation() 里的 8 处拐弯仍是开环</b>（N19）。统一闭环转向 API 与参考代码见 <b>docs/设计稿_闭环转向（参考副本）.md</b>（方向映射以 error&gt;0→ni 现场版为准）。</div>
 </section>
 
 <!-- ===== ⑤ 主程序架构 ===== -->
 <section id="s5">
   <h2>⑤ 主程序架构（main.c 代码块布局 + 三层调用）</h2>
   <h3>5.1 main.c 从上到下：只有一个 while(1) 在跑，其后全部不可达</h3>
+  <div class="ok"><b>2026-10-16 深夜工作区状态（未提交）：</b>PA8 闭环测试循环与 PA8 初始化已整体注释；使能 motor_enable_all() 与 path_planner_init() 已前移到初始化序列后；当前生效的是横移测试循环 <code>for(i=0;i&lt;8;i++){ zuo_(100); while(!judge()) Delay_ms(50); Delay_ms(1000); }</code>（标 test by Mike-lin300）。下图是 aa16ae4 的布局，恢复路线时把横移测试循环换回路线 switch。</div>
   <div class="svgbox">
   <svg viewBox="0 0 980 500" width="100%" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
     <defs>
@@ -616,6 +617,6 @@
 </section>
 
 </main>
-<footer>四麦轮小车项目图解 · 与 docs/ 文档同步更新 · 2026-10-16（N24 现场反装定性；2.6 到位等待时序）</footer>
+<footer>四麦轮小车项目图解 · 与 docs/ 文档同步更新 · 2026-10-16 深夜（标定 18373、横移修复、N1 前移、闭环转向设计稿）</footer>
 </body>
 </html>
