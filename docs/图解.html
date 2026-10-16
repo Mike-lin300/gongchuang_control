@@ -192,6 +192,7 @@
   </svg>
   </div>
   <div class="warn">待确认：① 电机是否上电自动使能（生效主循环没有调用使能）；② 陀螺仪安装朝向；③ USART3 接收方；④ 机械臂电机是否另挂总线（见开发笔记本 N1/N8/N13）。</div>
+  <div class="ok">2026-10-16 现场：实物 FL/FR、RL/RR 电机反装（左右位置对调），已通过指令地址对调处理，前/后/顺/逆现象正确（N24）。图中地址为仓库代码的角色映射，调试以实物为准。</div>
 </section>
 
 <!-- ===== ② ZDT 协议帧 ===== -->
@@ -262,7 +263,67 @@
     <tr><td><b>含义</b></td><td>掉电标志</td><td>保留</td><td>右限位</td><td>左限位</td><td>堵转保护</td><td>堵转</td><td>位置到达</td><td>已使能</td></tr>
     <tr><td><b>0x03</b></td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td></tr>
   </table>
-  <div class="ok">代码要求状态字节严格等于 <b>0x03</b> = 已使能 + 已到位，且无堵转/掉电标志（比手册示例的位与判断更严格）；四个电机轮询，每轮 50ms，60000 次查询兜底超时。</div>
+  <div class="ok">代码要求状态字节严格等于 <b>0x03</b> = 已使能 + 已到位，且无堵转/掉电标志（比手册示例的位与判断更严格）；四个电机轮询，每轮 50ms，60000 次查询兜底超时。运动中状态字节为 <b>0x01</b>（仅使能），走完自停后变 0x03。</div>
+
+  <h3>2.6 到位等待时序——qianjin_(1000) 之后为什么不会立刻发 houtui</h3>
+  <div class="svgbox">
+  <svg viewBox="0 0 1000 330" width="100%" font-family="Segoe UI,Microsoft YaHei,sans-serif" font-size="12">
+    <defs>
+      <marker id="arrT" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#46566b"/>
+      </marker>
+    </defs>
+    <!-- 泳道 -->
+    <rect x="60" y="30" width="920" height="100" rx="10" fill="#f7f9fc" stroke="#c6cfdb"/>
+    <rect x="60" y="190" width="920" height="100" rx="10" fill="#f7f9fc" stroke="#c6cfdb"/>
+    <text x="20" y="85" font-weight="bold" fill="#0c3c8c" font-size="13" transform="rotate(-90 20,85)">单片机</text>
+    <text x="20" y="245" font-weight="bold" fill="#0b7a75" font-size="13" transform="rotate(-90 20,245)">电机</text>
+
+    <!-- 阶段分隔 -->
+    <line x1="280" y1="24" x2="280" y2="300" stroke="#8a93a3" stroke-dasharray="6,5"/>
+    <line x1="830" y1="24" x2="830" y2="300" stroke="#8a93a3" stroke-dasharray="6,5"/>
+    <text x="170" y="20" text-anchor="middle" fill="#5b6675" font-size="11">阶段 A：下发（约 25ms）</text>
+    <text x="555" y="20" text-anchor="middle" fill="#5b6675" font-size="11">阶段 B：运动 + judge 阻塞轮询（几秒）</text>
+    <text x="915" y="20" text-anchor="middle" fill="#5b6675" font-size="11">阶段 C</text>
+
+    <!-- 阶段 A -->
+    <rect x="70" y="50" width="200" height="60" rx="9" fill="#e8f0fc" stroke="#0c3c8c"/>
+    <text x="170" y="74" text-anchor="middle" font-weight="bold" fill="#0c3c8c">发 4 条 FD 帧</text>
+    <text x="170" y="92" text-anchor="middle" fill="#5b6675">sync=01 先缓存</text>
+    <text x="170" y="108" text-anchor="middle" fill="#5b6675">再广播 00 FF 66 6B</text>
+    <rect x="70" y="210" width="200" height="60" rx="9" fill="#f3f3f5" stroke="#8a93a3"/>
+    <text x="170" y="236" text-anchor="middle" fill="#5b6675">收到命令但不动</text>
+    <text x="170" y="254" text-anchor="middle" fill="#5b6675">（等待同步帧）</text>
+
+    <!-- 阶段 B -->
+    <rect x="292" y="50" width="528" height="60" rx="9" fill="#fff5d6" stroke="#a07a00"/>
+    <text x="556" y="74" text-anchor="middle" font-weight="bold" fill="#7a5d00">judge() 阻塞轮询：轮流对 4 个电机发 [addr] 3A 6B</text>
+    <text x="556" y="92" text-anchor="middle" fill="#5b6675">回包 ≠ 0x03 就 Delay 5ms 再问；已到位的电机不再查</text>
+    <text x="556" y="108" text-anchor="middle" fill="#c62828">此期间陀螺仪不采样、不响应新指令（阻塞）</text>
+    <rect x="292" y="210" width="528" height="60" rx="9" fill="#e7f3e8" stroke="#2e7d32"/>
+    <text x="556" y="234" text-anchor="middle" font-weight="bold" fill="#2e7d32">4 轮同时走：驱动器内部闭环，加速→匀速→减速→自停</text>
+    <text x="556" y="252" text-anchor="middle" fill="#5b6675">运动中回包 0x01（仅使能，bit1=0）</text>
+
+    <!-- 查询箭头 -->
+    <path d="M380,110 L380,208" stroke="#46566b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrT)"/>
+    <text x="380" y="130" text-anchor="middle" font-size="10.5" fill="#46566b">0x3A→0x01</text>
+    <path d="M556,110 L556,208" stroke="#46566b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrT)"/>
+    <text x="556" y="130" text-anchor="middle" font-size="10.5" fill="#46566b">0x3A→0x01</text>
+    <path d="M740,110 L740,208" stroke="#2e7d32" stroke-width="1.8" stroke-dasharray="4,3" marker-end="url(#arrT)"/>
+    <text x="740" y="130" text-anchor="middle" font-size="10.5" fill="#2e7d32">0x3A→0x03</text>
+
+    <!-- 阶段 C -->
+    <rect x="842" y="50" width="130" height="60" rx="9" fill="#e7f3e8" stroke="#2e7d32" stroke-width="2"/>
+    <text x="907" y="72" text-anchor="middle" font-weight="bold" fill="#2e7d32">四轮都 0x03</text>
+    <text x="907" y="89" text-anchor="middle" fill="#2e7d32">return 1</text>
+    <text x="907" y="106" text-anchor="middle" fill="#2e7d32">才发 houtui_</text>
+    <rect x="842" y="210" width="130" height="60" rx="9" fill="#e7f3e8" stroke="#2e7d32"/>
+    <text x="907" y="236" text-anchor="middle" fill="#2e7d32">走完自停</text>
+    <text x="907" y="254" text-anchor="middle" fill="#5b6675">锁轴保持</text>
+  </svg>
+  </div>
+  <div class="ok">同步帧管"4 轮同时开始"，judge 管"4 轮全部走完再进下一段"；等的是最慢的那个轮。guard 60000 轮兜底约 3 小时，只防电机死机。</div>
+</section>
 
   <h3>2.5 读位置回包（功能码 36，手册 p.72）——8 字节，当前中断解析器收不了</h3>
   <div class="frame">
@@ -311,8 +372,8 @@
     </div>
     <!-- 顺时针 -->
     <div class="car-card">
-      <h4>shun_yaw_ 顺时针（名）</h4>
-      <div class="sub">方向位 [0,0,0,0]，四轮都 0；左退右进，实际转向待现场验证</div>
+      <h4>shun_yaw_ 顺时针</h4>
+      <div class="sub">方向位 [0,0,0,0]，四轮都 0；左退右进；2026-10-16 现场确认顺时针正确（N24）</div>
       <div class="car">
         <div class="wheel w-bak">↓<span class="wl">FL</span><span class="wb">位 0</span></div>
         <div class="wheel w-fwd">↑<span class="wl">FR</span><span class="wb">位 0</span></div>
@@ -324,8 +385,8 @@
     </div>
     <!-- 逆时针 -->
     <div class="car-card">
-      <h4>ni_yaw_ 逆时针（名）</h4>
-      <div class="sub">方向位 [1,1,1,1]，四轮都 1；左进右退，实际转向待现场验证</div>
+      <h4>ni_yaw_ 逆时针</h4>
+      <div class="sub">方向位 [1,1,1,1]，四轮都 1；左进右退；2026-10-16 现场确认逆时针正确（N24）</div>
       <div class="car">
         <div class="wheel w-fwd">↑<span class="wl">FL</span><span class="wb">位 1</span></div>
         <div class="wheel w-bak">↓<span class="wl">FR</span><span class="wb">位 1</span></div>
@@ -362,8 +423,10 @@
       <div class="bits">标准 X 型麦轮横移应对角轮同向；待现场确认辊子排列后改</div>
     </div>
   </div>
-  <div class="warn">
-    ① 标准 X 型麦轮推导：左退右进 = 俯视逆时针（shun 名实相反），左进右退 = 顺时针（ni 名实相反）；但陀螺仪闭环实测 ni 使角度增大且稳定，说明陀螺仪 Z 轴方向或轮组排列可能不同，<b>必须现场小角度实测</b>。<br>
+  <div class="ok">
+    <b>2026-10-16 现场结论：</b>名实矛盾的根因是 FL/FR、RL/RR 电机反装（N24），指令地址对调后 shun/ni 实际转向与命名一致，代码保留不回改；换电机/重装后需重新核对。<b>横移 zuo_/you 仍未测试（N4）。</b>
+  </div>
+  <div class="note">
     ② 旧版（8b3e4dd）旋转只驱动 FL+FR，RL/RR 被注释；aa16ae4 改为四轮。
   </div>
 </section>
@@ -437,7 +500,7 @@
     <tr><td>反接保护</td><td>无</td><td>首次反馈反向 &gt;5° 判失败</td></tr>
     <tr><td>单次修正上限</td><td>无</td><td>≤30°</td></tr>
   </table>
-  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>闭环只在 PA8 测试代码里，<b>translation() 里的 8 处拐弯仍是开环</b>；两版方向映射相反，现场实测前不要互抄（N8/N16）。</div>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>闭环只在 PA8 测试代码里，<b>translation() 里的 8 处拐弯仍是开环</b>（N19）；两版方向映射相反的问题已随现场反装定性（N24），以生效版（现场正确）为准，死代码版合并时删除。</div>
 </section>
 
 <!-- ===== ⑤ 主程序架构 ===== -->
@@ -537,7 +600,7 @@
     <tr><td>7</td><td>(2250,2250)=PATH_TARGET</td><td>回终点，成功后 step=100；行尾注释写成 (1200,2250)，抄错</td></tr>
     <tr><td>8 / 9</td><td>(1200,150) / (2250,2250)</td><td><b>永不执行</b>：没有分支会把 step 设为 8/9</td></tr>
   </table>
-  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>translation 的 8 处转向都写死 <code>Delay_ms(1000)</code> 再 judge，平动后却直接 judge（N21）；且 shun/ni 的用法依赖 N8/N16 的方向结论，闭环接通前不能照搬。</div>
+  <div class="warn"><svg class="ic-warn" viewBox="0 0 24 24" fill="none" stroke="#c62828" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 L22 20 H2 Z"/><path d="M12 10 v4.2"/><path d="M12 17.2 v.3" stroke-linecap="round"/></svg>translation 的 8 处转向都写死 <code>Delay_ms(1000)</code> 再 judge，平动后却直接 judge（N21）；shun/ni 方向问题已由现场反装定性（N24），但 8 处拐弯仍需换成闭环（N19）。</div>
 </section>
 
 <!-- ===== 后续待补 ===== -->
@@ -553,6 +616,6 @@
 </section>
 
 </main>
-<footer>四麦轮小车项目图解 · 与 docs/ 文档同步更新 · 2026-10-15</footer>
+<footer>四麦轮小车项目图解 · 与 docs/ 文档同步更新 · 2026-10-16（N24 现场反装定性；2.6 到位等待时序）</footer>
 </body>
 </html>
