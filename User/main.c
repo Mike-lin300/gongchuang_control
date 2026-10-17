@@ -118,7 +118,13 @@ static int32_t gyro_wrap_180(int32_t angle)
     return angle;
 }
 
-/* 等待一帧新的有效角度，避免用旧数据重复计算 PD。 */
+/**
+ * @brief   等待一帧新的有效角度，避免用旧数据重复计算 PD。
+ * @param   last_frame_count  上次已处理的陀螺仪帧计数，传入地址以便更新。
+ * @param   yaw               输出：新的角度，单位 0.01 度。
+ * @retval                1 表示成功，0 表示超时。
+ * @note        
+ */
 static u8 gyro_wait_new_sample(uint32_t *last_frame_count, int32_t *yaw)
 {
     uint16_t timeout;
@@ -135,23 +141,31 @@ static u8 gyro_wait_new_sample(uint32_t *last_frame_count, int32_t *yaw)
     return 0;
 }
 
-/* 陀螺仪比例转向：先执行目标增量，再按剩余误差的一半逐次修正。
- * target_delta 使用相对起始角度，单位 0.01 度；所有修正均有次数和角度上限。 */
+
+/**
+ * @brief   陀螺仪比例转向：先执行目标增量，再按剩余误差的一半逐次修正。
+ * @param   target_delta    使用相对起始角度增量，单位 0.01 度，正（顺时针）负（逆时针）。
+ * @retval                  1 表示成功，0 表示失败。
+ * @note        
+ */
 static u8 gyro_turn_pos_test(int32_t target_delta)
 {
-    const int32_t TOLERANCE = 10L;        /* 到位误差 ±0.1 度 */
-    const uint8_t MAX_CORRECTIONS = 5u;
-    const int32_t MAX_CORRECTION_DEG = 30L;
+    const int32_t TOLERANCE = 10L;              // 到位容差 0.1 度
+    const uint8_t MAX_CORRECTIONS = 5u;         // 最多修正5次，不含首发命令
+    const int32_t MAX_CORRECTION_DEG = 30L;     // 修正时最大转 30 度
+    // start_yaw 表示进入时陀螺仪 yaw， 作为相对零点
+    // yaw 表示每次新样本的绝对yaw
     int32_t start_yaw, yaw, relative_yaw, error, deg, abs_error;
     uint32_t last_frame_count;
     uint8_t correction_count = 0u;
-    uint8_t stable_count = 0u;
-    uint8_t first_feedback = 1u;
+    uint8_t stable_count = 0u;                  // 连续进入容差的新样本数，达到 3 才算真正到位
+    uint8_t first_feedback = 1u;                // 单次检验标志
 
-    if(!Gyro_GetYawCentiDegrees(&start_yaw)) return 0;
-    last_frame_count = Gyro_FrameCount;
+    if(!Gyro_GetYawCentiDegrees(&start_yaw)) return 0;      // 如果陀螺仪未接入，直接返回失败
+    last_frame_count = Gyro_FrameCount;                     // 记录最新的帧号，后面只接受更新的
 
     /* 先按目标方向执行一次完整位置命令。 */
+    // 这里的逻辑是取整度数，四舍五入，有容差问题，后续要改
     deg = (target_delta >= 0L) ? target_delta : -target_delta;
     deg = (deg + 50L) / 100L;
     if(deg < 1L) return 0;
@@ -161,23 +175,23 @@ static u8 gyro_turn_pos_test(int32_t target_delta)
         ni_yaw_((uint32_t)deg);
 
     Delay_ms(50);
-    if(!judge()) return 0;
+    if(!judge()) return 0;                      // 这个 judge 是否要改存疑 （=============================）
 
-    while(1){
+    while(1){                                   // 离散的修正循环
         if(!gyro_wait_new_sample(&last_frame_count, &yaw)) return 0;
 
-        relative_yaw = gyro_wrap_180(yaw - start_yaw);
-        error = gyro_wrap_180(target_delta - relative_yaw);
+        relative_yaw = gyro_wrap_180(yaw - start_yaw);          // relative_yaw - start_yaw 并 wrap 到 [-180,180) 表示实际已转相对角度
+        error = gyro_wrap_180(target_delta - relative_yaw);     // 剩余误差，若 > 0 继续顺，若 < 0 继续逆
         OLED_ShowString(3, 1, "DY:");
         OLED_ShowSignedNum(3, 4, relative_yaw / 100L, 3);
 
         if(error <= TOLERANCE && error >= -TOLERANCE){
-            if(++stable_count >= 3u) return 1;
+            if(++stable_count >= 3u) return 1;                  // 如果连续 3 个新样本都在容差内，判为真正到位
             continue;
         }
         stable_count = 0u;
 
-        /* 首次反馈若明显朝反方向变化，判为方向配置错误并停止修正。 */
+        /* 单次检验，用于排查是否反了，可以做一个保护, 5 度的保护阈值。 */
         if(first_feedback){
             first_feedback = 0u;
             if((target_delta > 0L && relative_yaw < -500L) ||
@@ -185,8 +199,7 @@ static u8 gyro_turn_pos_test(int32_t target_delta)
                 return 0;
         }
 
-        if(correction_count >= MAX_CORRECTIONS)
-            return 0;   /* 已做完全部修正，当前测量仍未进入容差 */
+        if(correction_count >= MAX_CORRECTIONS) return 0;       // 修正次数用完仍然未进入容差，失败       
 
         abs_error = (error >= 0L) ? error : -error;
         deg = (abs_error + 100L) / 200L;    /* Kp=0.5，四舍五入到整度 */
@@ -226,7 +239,7 @@ static u8 go_to(u16 *cx, u16 *cy, u16 tx, u16 ty)
     return 1;
 }
 
-// #define __MIKELIN_DEBUG
+#define __MIKELIN_DEBUG
 
 #ifndef __MIKELIN_DEBUG
 /* 主程序区，原本的功能 */
@@ -257,14 +270,14 @@ int main(void)
 	/* 陀螺仪角度经 USART3(PB10) 输出给上位机，格式 "xxx.xx\r\n"。
 	 * 下位机以 \r 或 \n 作为一帧结束，直接按字符串显示即可。 */
 
-//	while(1){
-//		if (Gyro_GetYawCentiDegrees(&yaw_centi_degrees))
-//		{
-//			USART3_SendAngleCentiDegrees(yaw_centi_degrees);
-//			OLED_ShowSignedNum(2, 1, yaw_centi_degrees / 100, 8);
-//		}
-//		Delay_ms(200);
-//	}
+	while(1){
+		if (Gyro_GetYawCentiDegrees(&yaw_centi_degrees))
+		{
+			USART3_SendAngleCentiDegrees(yaw_centi_degrees);
+			OLED_ShowSignedNum(2, 1, yaw_centi_degrees / 100, 8);
+		}
+		Delay_ms(200);
+	}
 
 	// s32 yaw_error, rel;
 	// while(1){
