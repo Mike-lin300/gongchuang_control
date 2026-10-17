@@ -226,6 +226,131 @@ static u8 go_to(u16 *cx, u16 *cy, u16 tx, u16 ty)
     return 1;
 }
 
+// #define __MIKELIN_DEBUG
+
+#ifdef __MIKELIN_DEBUG
+
+#define GYRO_TURN_TOLERANCE_CENTI   100L   /* 容差 ±1.0° */
+#define GYRO_TURN_MAX_CORRECTIONS   5u     /* 最多补转次数 */
+#define GYRO_TURN_MAX_CORR_DEG      30L    /* 单次补转上限 30° */
+#define GYRO_TURN_STABLE_FRAMES     3u     /* 连续 3 帧进容差 */
+#define GYRO_TURN_WRONGWAY_CENTI    500L   /* 首发反向超过 5° 判失败 */
+#define GYRO_TURN_SETTLE_MS         50u    /* 停稳延时 */
+
+/* 相对转角闭环：delta_centi 单位 0.01°，>0 逆时针(ni，角度增大)，<0 顺时针(shun)。
+ * 返回 1=成功（连续 3 帧在容差内）；0=失败（陀螺仪无效/掉线、judge 失败、反接、补转超限）。
+ * 依赖：ni_yaw_/shun_yaw_/judge（motor.c + main.c）、Gyro_GetYawCentiDegrees/Gyro_FrameCount、
+ *       gyro_wrap_180/gyro_wait_new_sample（main.c 现有）。 */
+static u8 gyro_turn_delta(int32_t delta_centi)
+{
+    int32_t start_yaw, yaw, relative_yaw, error;
+    int32_t abs_error, deg;
+    uint32_t last_frame_count;
+    uint8_t corrections = 0u;
+    uint8_t stable = 0u;
+    uint8_t need_first_move = 1u;
+    uint8_t check_wrong_way = 1u;
+
+    if (delta_centi > 18000L)  delta_centi = 18000L;
+    if (delta_centi < -18000L) delta_centi = -18000L;
+
+    /* 1. 起始角必须有效 */
+    if (!Gyro_GetYawCentiDegrees(&start_yaw)) return 0;
+    last_frame_count = Gyro_FrameCount;
+
+    /* 2. 目标在容差内就不发动作，直接做稳定确认 */
+    if (delta_centi > -GYRO_TURN_TOLERANCE_CENTI &&
+        delta_centi <  GYRO_TURN_TOLERANCE_CENTI)
+    {
+        need_first_move = 0u;
+    }
+
+    while (1)
+    {
+        if (need_first_move)
+        {
+            /* 3. 首发：按 18373 标定给整度大动作 */
+            deg = (delta_centi >= 0L) ? delta_centi : -delta_centi;
+            deg = (deg + 50L) / 100L;             /* 四舍五入到整度 */
+            if (deg < 1L) return 0;
+
+            if (delta_centi > 0L) ni_yaw_((uint32_t)deg);
+            else                  shun_yaw_((uint32_t)deg);
+            if (!judge()) return 0;
+            Delay_ms(GYRO_TURN_SETTLE_MS);
+            need_first_move = 0u;
+        }
+
+        /* 4. 必须等停转后的新帧（2 秒超时） */
+        if (!gyro_wait_new_sample(&last_frame_count, &yaw)) return 0;
+
+        relative_yaw = gyro_wrap_180(yaw - start_yaw);
+        error = gyro_wrap_180(delta_centi - relative_yaw);
+
+        /* 5. 容差 + 连续稳定帧 */
+        if (error <= GYRO_TURN_TOLERANCE_CENTI &&
+            error >= -GYRO_TURN_TOLERANCE_CENTI)
+        {
+            if (++stable >= GYRO_TURN_STABLE_FRAMES) return 1;
+            continue;
+        }
+        stable = 0u;
+
+        /* 6. 首发/补转后反向保护：相对角跑到了相反方向超过 5° */
+        if (check_wrong_way)
+        {
+            check_wrong_way = 0u;
+            if ((delta_centi > 0L && relative_yaw < -GYRO_TURN_WRONGWAY_CENTI) ||
+                (delta_centi < 0L && relative_yaw >  GYRO_TURN_WRONGWAY_CENTI))
+                return 0;
+        }
+
+        /* 7. 补转次数用尽 */
+        if (corrections >= GYRO_TURN_MAX_CORRECTIONS) return 0;
+
+        /* 8. Kp=1 整度补转，限幅 1~30° */
+        abs_error = (error >= 0L) ? error : -error;
+        deg = (abs_error + 50L) / 100L;
+        if (deg < 1L) deg = 1L;
+        if (deg > GYRO_TURN_MAX_CORR_DEG) deg = GYRO_TURN_MAX_CORR_DEG;
+
+        if (error > 0L) ni_yaw_((uint32_t)deg);
+        else            shun_yaw_((uint32_t)deg);
+        if (!judge()) return 0;
+        Delay_ms(GYRO_TURN_SETTLE_MS);
+
+        corrections++;
+        check_wrong_way = 1u;   /* 补转后也检查一次，防止越补越远 */
+    }
+}
+
+int main(void)
+{
+    u16 cur_x = PATH_START_X;
+    u16 cur_y = PATH_START_Y;
+    u8 step = 0;
+
+    OLED_Init();
+    Serial_Init();
+    Gyro_Init();
+    USART3_Init(115200);
+    USART2_Init(115200);
+    path_planner_init();
+    motor_enable_all();
+
+    gyro_turn_delta(9000L);  /* 测试：逆时针转 90°，单位 0.01° */
+
+
+    while(1) {
+        
+    }
+
+}
+
+
+
+#else
+
 int main(void)
 {
     u16 cur_x = PATH_START_X;
@@ -240,6 +365,8 @@ int main(void)
     Gyro_Init();
     USART3_Init(115200);
     USART2_Init(115200);
+    path_planner_init();
+    motor_enable_all();
 
 	/* 通用发送自检：发送字符串/字符/整数/小数/角度，串口终端核对输出。
 	 * 需要恢复实时陀螺仪角度输出时，注释掉本循环、打开下方被注释的循环即可。 */
@@ -248,7 +375,7 @@ int main(void)
 //		Delay_ms(1000);
 //	}
 
-	/* 陀螺仪角度经 USART3(PB10) 输出给下位机，格式 "xxx.xx\r\n"。
+	/* 陀螺仪角度经 USART3(PB10) 输出给上位机，格式 "xxx.xx\r\n"。
 	 * 下位机以 \r 或 \n 作为一帧结束，直接按字符串显示即可。 */
 
 //	while(1){
@@ -260,104 +387,84 @@ int main(void)
 //		Delay_ms(200);
 //	}
 
-	s32 yaw_error, rel;
-	while(1){
-		if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
-			Delay_ms(20);
-			if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
-				/* 逆时针 90°：先记起始角。你的陀螺仪逆时针是角度增大(0→+180→-180→0)，
-				 * 所以目标 = 起始角 + 90°，单位 0.01°。 */
-				if(Gyro_GetYawCentiDegrees(&last_yaw_centi_degrees)){
-					for(int i=0;i<5;i++){
-						if(!Gyro_GetYawCentiDegrees(&yaw_centi_degrees)) break;
-						/* 相对转角和误差都包到 [-180°,180°)，跨 ±180° 才不跳变 */
-						rel = gyro_wrap_180(yaw_centi_degrees - last_yaw_centi_degrees);
-						yaw_error = gyro_wrap_180(9000 - rel);
+	// s32 yaw_error, rel;
+	// while(1){
+	// 	if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
+	// 		Delay_ms(20);
+	// 		if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
+	// 			/* 逆时针 90°：先记起始角。你的陀螺仪逆时针是角度增大(0→+180→-180→0)，
+	// 			 * 所以目标 = 起始角 + 90°，单位 0.01°。 */
+	// 			if(Gyro_GetYawCentiDegrees(&last_yaw_centi_degrees)){
+	// 				for(int i=0;i<5;i++){
+	// 					if(!Gyro_GetYawCentiDegrees(&yaw_centi_degrees)) break;
+	// 					/* 相对转角和误差都包到 [-180°,180°)，跨 ±180° 才不跳变 */
+	// 					rel = gyro_wrap_180(yaw_centi_degrees - last_yaw_centi_degrees);
+	// 					yaw_error = gyro_wrap_180(9000 - rel);
 
-						if(yaw_error >= -100 && yaw_error <= 100) break;  /* 误差≤1°到位 */
+	// 					if(yaw_error >= -100 && yaw_error <= 100) break;  /* 误差≤1°到位 */
 
-						if(yaw_error > 0)
-							ni_yaw_((uint32_t)(( yaw_error + 50) / 100));    /* 还没转够，继续逆时针 */
-						else
-							shun_yaw_((uint32_t)((-yaw_error + 50) / 100));  /* 转过了，顺时针补回 */
+	// 					if(yaw_error > 0)
+	// 						ni_yaw_((uint32_t)(( yaw_error + 50) / 100));    /* 还没转够，继续逆时针 */
+	// 					else
+	// 						shun_yaw_((uint32_t)((-yaw_error + 50) / 100));  /* 转过了，顺时针补回 */
 
-						if(!judge()) break;
-						Delay_ms(50);
-					}
-				}
-				/* 松手防抖，避免按住时连续触发 */
-				while(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET) Delay_ms(10);
-				Delay_ms(20);
-			}
-		}
-		USART3_Printf("angle=%d\r\n",(int)yaw_centi_degrees);
-		Delay_ms(20);
-	}
+	// 					if(!judge()) break;
+	// 					Delay_ms(50);
+	// 				}
+	// 			}
+	// 			/* 松手防抖，避免按住时连续触发 */
+	// 			while(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET) Delay_ms(10);
+	// 			Delay_ms(20);
+	// 		}
+	// 	}
+	// 	USART3_Printf("angle=%d\r\n",(int)yaw_centi_degrees);
+	// 	Delay_ms(20);
+	// }
 
-
-	shun_yaw_(90);
-	while(1){
-		Delay_ms(10);
-		if(judge()){
-			break;
-		}
-	}
-	ni_yaw_(90);
-	while(1){
-		Delay_ms(10);
-		if(judge()){
-			break;
-		}
-	}
     /* 临时角度输出测试：陀螺仪以 100 Hz 接收，USART3 以 5 Hz 输出最新角度。 */
 //    while(1)
 //    {
 //        if (Gyro_GetYawCentiDegrees(&yaw_centi_degrees))
 //            USART3_SendAngleCentiDegrees(yaw_centi_degrees);
-//			OLED_ShowSignedNum(2,1,yaw_centi_degrees/100,8);
+// 			OLED_ShowSignedNum(2,1,yaw_centi_degrees/100,8);
 //        Delay_ms(200);
 //    }
 
-    /* PA8 低电平按键，作为临时 90 度闭环测试触发。 */
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    {
-        GPIO_InitTypeDef GPIO_InitStructure;
-        GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8;
-        GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-        GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-        GPIO_Init(GPIOA, &GPIO_InitStructure);
-    }
-    Delay_ms(200);
+    // /* PA8 低电平按键，作为临时 90 度闭环测试触发。 */
+    // RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+    // {
+    //     GPIO_InitTypeDef GPIO_InitStructure;
+    //     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8;
+    //     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    //     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    //     GPIO_Init(GPIOA, &GPIO_InitStructure);
+    // }
+    // Delay_ms(200);
 
-    path_planner_init();
-    motor_enable_all();
+    
 
-    /* 临时比例转向测试：PA8 按下闭环转向 +90 度，松开后可再次测试。
-     * 测试循环放在正式路线循环之前，因此本版本不会启动自动路线。 */
-    OLED_ShowString(1, 1, "PA8 TURN TEST");
-    while(1)
-    {
-        if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
-            Delay_ms(20);
-            if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
-                OLED_ShowString(2, 1, "TURNING       ");
-                if(gyro_turn_pos_test(9000L))
-                    OLED_ShowString(2, 1, "TURN OK       ");
-                else
-                    OLED_ShowString(2, 1, "TURN ERROR    ");
+    // /* 临时比例转向测试：PA8 按下闭环转向 +90 度，松开后可再次测试。
+    //  * 测试循环放在正式路线循环之前，因此本版本不会启动自动路线。 */
+    // OLED_ShowString(1, 1, "PA8 TURN TEST");
+    // while(1)
+    // {
+    //     if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
+    //         Delay_ms(20);
+    //         if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET){
+    //             OLED_ShowString(2, 1, "TURNING       ");
+    //             if(gyro_turn_pos_test(9000L))
+    //                 OLED_ShowString(2, 1, "TURN OK       ");
+    //             else
+    //                 OLED_ShowString(2, 1, "TURN ERROR    ");
 
-                while(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET)
-                    Delay_ms(10);
-                Delay_ms(20);
-            }
-        }
-        Delay_ms(10);
-    }
+    //             while(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_8) == Bit_RESET)
+    //                 Delay_ms(10);
+    //             Delay_ms(20);
+    //         }
+    //     }
+    //     Delay_ms(10);
+    // }
 
-//	go_to(&cur_x, &cur_y, 2250u, 1200u);
-//	while(1){
-//		
-//	}
     /* 路线：每个 case 开头指定「下一个地点」，随后 go_to 完成规划 + 发送电机 + 等到位，
      * 全部到位后才进入下一个 case（不共享 path_ready/path_index 之类的中间状态）。 */
     while(1)
@@ -392,3 +499,6 @@ int main(void)
         }
     }
 }
+
+#endif
+
