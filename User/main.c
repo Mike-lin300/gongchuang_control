@@ -10,6 +10,7 @@
 #include "motor.h"
 #include "path_planner.h"
 #include "path_config.h"
+#include "utils.h"
 
 static u8 dir = PATH_INITIAL_DIR;
 static u16 judge_trans_display_count = 0;
@@ -110,113 +111,8 @@ static u8 translation(u16 x0, u16 y0, u16 x1, u16 y1)
     return judge();
 }
 
-/* 把角度差限制到 [-180, 180) 度，输入/输出单位均为 0.01 度。 */
-static int32_t gyro_wrap_180(int32_t angle)
-{
-    while(angle >= 18000L) angle -= 36000L;
-    while(angle < -18000L) angle += 36000L;
-    return angle;
-}
-
-/**
- * @brief   等待一帧新的有效角度，避免用旧数据重复计算 PD。
- * @param   last_frame_count  上次已处理的陀螺仪帧计数，传入地址以便更新。
- * @param   yaw               输出：新的角度，单位 0.01 度。
- * @retval                1 表示成功，0 表示超时。
- * @note        
- */
-static u8 gyro_wait_new_sample(uint32_t *last_frame_count, int32_t *yaw)
-{
-    uint16_t timeout;
-
-    for(timeout = 0; timeout < 200u; timeout++){
-        if(Gyro_FrameCount != *last_frame_count){
-            if(Gyro_GetYawCentiDegrees(yaw)){
-                *last_frame_count = Gyro_FrameCount;
-                return 1;
-            }
-        }
-        Delay_ms(10);
-    }
-    return 0;
-}
 
 
-/**
- * @brief   陀螺仪比例转向：先执行目标增量，再按剩余误差的一半逐次修正。
- * @param   target_delta    使用相对起始角度增量，单位 0.01 度，正（顺时针）负（逆时针）。
- * @retval                  1 表示成功，0 表示失败。
- * @note        
- */
-static u8 gyro_turn_pos_test(int32_t target_delta)
-{
-    const int32_t TOLERANCE = 10L;              // 到位容差 0.1 度
-    const uint8_t MAX_CORRECTIONS = 5u;         // 最多修正5次，不含首发命令
-    const int32_t MAX_CORRECTION_DEG = 30L;     // 修正时最大转 30 度
-    // start_yaw 表示进入时陀螺仪 yaw， 作为相对零点
-    // yaw 表示每次新样本的绝对yaw
-    int32_t start_yaw, yaw, relative_yaw, error, deg, abs_error;
-    uint32_t last_frame_count;
-    uint8_t correction_count = 0u;
-    uint8_t stable_count = 0u;                  // 连续进入容差的新样本数，达到 3 才算真正到位
-    uint8_t first_feedback = 1u;                // 单次检验标志
-
-    if(!Gyro_GetYawCentiDegrees(&start_yaw)) return 0;      // 如果陀螺仪未接入，直接返回失败
-    last_frame_count = Gyro_FrameCount;                     // 记录最新的帧号，后面只接受更新的
-
-    /* 先按目标方向执行一次完整位置命令。 */
-    // 这里的逻辑是取整度数，四舍五入，有容差问题，后续要改
-    deg = (target_delta >= 0L) ? target_delta : -target_delta;
-    deg = (deg + 50L) / 100L;
-    if(deg < 1L) return 0;
-    if(target_delta >= 0L)
-        shun_yaw_((uint32_t)deg);
-    else
-        ni_yaw_((uint32_t)deg);
-
-    Delay_ms(50);
-    if(!judge()) return 0;                      // 这个 judge 是否要改存疑 （=============================）
-
-    while(1){                                   // 离散的修正循环
-        if(!gyro_wait_new_sample(&last_frame_count, &yaw)) return 0;
-
-        relative_yaw = gyro_wrap_180(yaw - start_yaw);          // relative_yaw - start_yaw 并 wrap 到 [-180,180) 表示实际已转相对角度
-        error = gyro_wrap_180(target_delta - relative_yaw);     // 剩余误差，若 > 0 继续顺，若 < 0 继续逆
-        OLED_ShowString(3, 1, "DY:");
-        OLED_ShowSignedNum(3, 4, relative_yaw / 100L, 3);
-
-        if(error <= TOLERANCE && error >= -TOLERANCE){
-            if(++stable_count >= 3u) return 1;                  // 如果连续 3 个新样本都在容差内，判为真正到位
-            continue;
-        }
-        stable_count = 0u;
-
-        /* 单次检验，用于排查是否反了，可以做一个保护, 5 度的保护阈值。 */
-        if(first_feedback){
-            first_feedback = 0u;
-            if((target_delta > 0L && relative_yaw < -500L) ||
-               (target_delta < 0L && relative_yaw > 500L))
-                return 0;
-        }
-
-        if(correction_count >= MAX_CORRECTIONS) return 0;       // 修正次数用完仍然未进入容差，失败       
-
-        abs_error = (error >= 0L) ? error : -error;
-        deg = (abs_error + 100L) / 200L;    /* Kp=0.5，四舍五入到整度 */
-        if(deg < 1L) deg = 1L;
-        if(deg > MAX_CORRECTION_DEG) deg = MAX_CORRECTION_DEG;
-
-        if(error > 0L)
-            shun_yaw_((uint32_t)deg);
-        else
-            ni_yaw_((uint32_t)deg);
-
-        Delay_ms(50);
-        if(!judge()) return 0;
-        correction_count++;
-    }
-
-}
 
 /* 从 (cx,cy) 规划到 (tx,ty) 并逐段执行，每段阻塞等电机到位。
  * 成功返回 1；无路径或某段超时返回 0。 */
@@ -290,8 +186,8 @@ int main(void)
 	// 				for(int i=0;i<5;i++){
 	// 					if(!Gyro_GetYawCentiDegrees(&yaw_centi_degrees)) break;
 	// 					/* 相对转角和误差都包到 [-180°,180°)，跨 ±180° 才不跳变 */
-	// 					rel = gyro_wrap_180(yaw_centi_degrees - last_yaw_centi_degrees);
-	// 					yaw_error = gyro_wrap_180(9000 - rel);
+	// 					rel = angle_wrap_180_centideg(yaw_centi_degrees - last_yaw_centi_degrees);
+	// 					yaw_error = angle_wrap_180_centideg(9000 - rel);
 
 	// 					if(yaw_error >= -100 && yaw_error <= 100) break;  /* 误差≤1°到位 */
 
@@ -399,20 +295,25 @@ int main(void)
     u16 cur_x = PATH_START_X;
     u16 cur_y = PATH_START_Y;
     u8 step = 0;
+    // int32_t start_yaw = 0, yaw_ = 0, relative_yaw, error = 9000;
+    // uint32_t last_frame_count = 0;
 
     OLED_Init();
     Serial_Init();
     Gyro_Init();
     USART3_Init(115200);
     USART2_Init(115200);
-    path_planner_init();
+    // path_planner_init();
     motor_enable_all();
 
-    gyro_turn_pos_test(9000L);
+    if (gyro_turn_pos_test(9000)) {
+        Delay_ms(1000);
+        gyro_turn_pos_test(-9000);
+    }
 
 
     while(1) {
-        
+
     }
 
 }
