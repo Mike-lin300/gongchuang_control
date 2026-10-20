@@ -15,93 +15,32 @@
 static u8 dir = PATH_INITIAL_DIR;
 static u16 judge_trans_display_count = 0;
 
-static u8 judge(void);
-
-/* 等待四个驱动电机全部到位。
- * 0x3A 查询的回包格式为 [地址][0x3A][状态][0x6B]，其中状态字节 (Serial_RxPacket[2])
- * 为 0x03 时表示该电机已到达。每查一个地址，先清标志再发查询，然后阻塞等回包，
- * 确认回包地址与本电机一致后再判断到位，避免把别的电机的回包误判成自己的。 */
-static u8 judge(void)
-{
-    u8 judge1 = 0, judge2 = 0, judge3 = 0, judge4 = 0;
-    u16 t, guard = 0;
-
-    while(1){
-        if(judge1 == 0){
-            Serial_RxFlag = 0;
-            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
-            Serial_SendByte(0x01); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
-            if(Serial_RxPacket[0] == 0x01 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
-                judge1 = 1;
-        }
-        Delay_ms(5);
-        if(judge2 == 0){
-            Serial_RxFlag = 0;
-            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
-            Serial_SendByte(0x02); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
-            if(Serial_RxPacket[0] == 0x02 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
-                judge2 = 1;
-        }
-        Delay_ms(5);
-        if(judge3 == 0){
-            Serial_RxFlag = 0;
-            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
-            Serial_SendByte(0x03); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
-            if(Serial_RxPacket[0] == 0x03 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
-                judge3 = 1;
-        }
-        Delay_ms(5);
-        if(judge4 == 0){
-            Serial_RxFlag = 0;
-            Serial_RxPacket[0] = Serial_RxPacket[1] = Serial_RxPacket[2] = Serial_RxPacket[3] = 0;
-            Serial_SendByte(0x04); Serial_SendByte(0x3A); Serial_SendByte(0x6B);
-            for(t = 0; t < 50; t++){ if(Serial_GetRxFlag()) break; Delay_ms(1); }
-            if(Serial_RxPacket[0] == 0x04 && Serial_RxPacket[1] == 0x3A && Serial_RxPacket[2] == 0x03)
-                judge4 = 1;
-        }
-        Delay_ms(5);
-
-        if(judge1 == 1 && judge2 == 1 && judge3 == 1 && judge4 == 1){
-            return 1;
-        }
-
-        OLED_ShowNum(2, 1, judge_trans_display_count++, 5);
-
-        if(++guard > 60000u){   /* 安全兜底，仅在电机死机时触发 */
-            return 0;
-        }
-    }
-}
-
 static u8 translation(u16 x0, u16 y0, u16 x1, u16 y1)
 {
     u16 distance;
 
     if(x1 == x0 && y1 > y0){
         distance = y1 - y0;
-        if(dir == 2){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 1; }
-        if(dir == 4){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 1; }
+        if(dir == 2){ gyro_turn_pos_test(-9000); Delay_ms(1000); if(!judge()) return 0; dir = 1; }
+        if(dir == 4){ gyro_turn_pos_test(9000);  Delay_ms(1000); if(!judge()) return 0; dir = 1; }
         if(dir == 3) houtui_(distance);
         else         qianjin_(distance);
     }else if(x1 == x0 && y1 < y0){
         distance = y0 - y1;
-        if(dir == 2){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 3; }
-        if(dir == 4){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 3; }
+        if(dir == 2){ gyro_turn_pos_test(9000);  Delay_ms(1000); if(!judge()) return 0; dir = 3; }
+        if(dir == 4){ gyro_turn_pos_test(-9000); Delay_ms(1000); if(!judge()) return 0; dir = 3; }
         if(dir == 3) qianjin_(distance);
         else         houtui_(distance);
     }else if(x1 < x0 && y1 == y0){
         distance = x0 - x1;
-        if(dir == 1){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 2; }
-        else if(dir == 3){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 2; }
+        if(dir == 1){ gyro_turn_pos_test(9000); Delay_ms(1000); if(!judge()) return 0; dir = 2; }
+        else if(dir == 3){ gyro_turn_pos_test(-9000); Delay_ms(1000); if(!judge()) return 0; dir = 2; }
         if(dir == 2) qianjin_(distance);
         else         houtui_(distance);
     }else if(x1 > x0 && y1 == y0){
         distance = x1 - x0;
-        if(dir == 1){ shun_yaw_(90); Delay_ms(1000); if(!judge()) return 0; dir = 4; }
-        if(dir == 3){ ni_yaw_(90);   Delay_ms(1000); if(!judge()) return 0; dir = 4; }
+        if(dir == 1){ gyro_turn_pos_test(-9000); Delay_ms(1000); if(!judge()) return 0; dir = 4; }
+        if(dir == 3){ gyro_turn_pos_test(9000); Delay_ms(1000); if(!judge()) return 0; dir = 4; }
         if(dir == 4) qianjin_(distance);
         else         houtui_(distance);
     }else{
@@ -110,7 +49,6 @@ static u8 translation(u16 x0, u16 y0, u16 x1, u16 y1)
 
     return judge();
 }
-
 
 
 
@@ -135,7 +73,7 @@ static u8 go_to(u16 *cx, u16 *cy, u16 tx, u16 ty)
     return 1;
 }
 
-#define __MIKELIN_DEBUG
+// #define __MIKELIN_DEBUG
 
 #ifndef __MIKELIN_DEBUG
 /* 主程序区，原本的功能 */
@@ -166,14 +104,14 @@ int main(void)
 	/* 陀螺仪角度经 USART3(PB10) 输出给上位机，格式 "xxx.xx\r\n"。
 	 * 下位机以 \r 或 \n 作为一帧结束，直接按字符串显示即可。 */
 
-	while(1){
-		if (Gyro_GetYawCentiDegrees(&yaw_centi_degrees))
-		{
-			USART3_SendAngleCentiDegrees(yaw_centi_degrees);
-			OLED_ShowSignedNum(2, 1, yaw_centi_degrees / 100, 8);
-		}
-		Delay_ms(200);
-	}
+	// while(1){
+	// 	if (Gyro_GetYawCentiDegrees(&yaw_centi_degrees))
+	// 	{
+	// 		USART3_SendAngleCentiDegrees(yaw_centi_degrees);
+	// 		OLED_ShowSignedNum(2, 1, yaw_centi_degrees / 100, 8);
+	// 	}
+	// 	Delay_ms(200);
+	// }
 
 	// s32 yaw_error, rel;
 	// while(1){
@@ -295,8 +233,6 @@ int main(void)
     u16 cur_x = PATH_START_X;
     u16 cur_y = PATH_START_Y;
     u8 step = 0;
-    // int32_t start_yaw = 0, yaw_ = 0, relative_yaw, error = 9000;
-    // uint32_t last_frame_count = 0;
 
     OLED_Init();
     Serial_Init();

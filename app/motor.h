@@ -21,7 +21,7 @@ void you_(uint32_t mm);
 
 /* 统一旋转 参数 = 百分角度 0.01度 */
 void motor_rotate_centideg(int32_t centideg);
-u8 gyro_turn_pos_test(int32_t target_delta);
+uint8_t gyro_turn_pos_test(int32_t target_delta);
 
 /* 顺逆时针转动，改薄封装 参数 = 角度 度；每度脉冲见 motor.c 的 PULSE_PER_DEG */
 void shun_yaw_(uint32_t deg);
@@ -41,4 +41,7 @@ void motor_read_pos(void);
 
 extern uint8_t cmd[13];
 void motor_set_pos(int32_t pos);
+
+uint8_t judge(void);
+
 #endif /* __MOTOR_H */
