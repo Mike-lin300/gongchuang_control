@@ -110,3 +110,27 @@ uint8_t Gyro_GetYawRaw(int16_t *raw)
     *raw = yaw_raw;
     return 1u;
 }
+
+
+/**
+ * @brief   等待一帧新的有效角度，避免用旧数据重复计算 PD。
+ * @param   last_frame_count  上次已处理的陀螺仪帧计数，传入地址以便更新。
+ * @param   yaw               输出：新的角度，单位 0.01 度。
+ * @retval                1 表示成功，0 表示超时。
+ * @note        
+ */
+u8 gyro_wait_new_sample(uint32_t *last_frame_count, int32_t *yaw)
+{
+    uint16_t timeout;
+
+    for(timeout = 0; timeout < 200u; timeout++){
+        if(Gyro_FrameCount != *last_frame_count){
+            if(Gyro_GetYawCentiDegrees(yaw)){
+                *last_frame_count = Gyro_FrameCount;
+                return 1;
+            }
+        }
+        Delay_ms(10);
+    }
+    return 0;
+}

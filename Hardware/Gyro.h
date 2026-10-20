@@ -22,6 +22,9 @@ uint8_t Gyro_GetYawCentiDegrees(int32_t *centi_degrees);
 /* 返回最近一次校验通过的 Z 轴原始有符号值。 */
 uint8_t Gyro_GetYawRaw(int16_t *raw);
 
+/* 等待一帧新的有效角度 */
+u8 gyro_wait_new_sample(uint32_t *last_frame_count, int32_t *yaw);
+
 /* 最近一次有效帧的计数，可用于判断传感器是否正在输出。 */
 extern volatile uint32_t Gyro_FrameCount;
 extern volatile int32_t yaw_centi_degrees;

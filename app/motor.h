@@ -19,7 +19,11 @@ void houtui_(uint32_t mm);
 void zuo_(uint32_t mm);
 void you_(uint32_t mm);
 
-/* 左转（逆时针）/ 右转（顺时针）：参数 = 角度 度；每度脉冲见 motor.c 的 PULSE_PER_DEG */
+/* 统一旋转 参数 = 百分角度 0.01度 */
+void motor_rotate_centideg(int32_t centideg);
+u8 gyro_turn_pos_test(int32_t target_delta);
+
+/* 顺逆时针转动，改薄封装 参数 = 角度 度；每度脉冲见 motor.c 的 PULSE_PER_DEG */
 void shun_yaw_(uint32_t deg);
 void ni_yaw_(uint32_t deg);
 

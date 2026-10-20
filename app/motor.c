@@ -1,4 +1,5 @@
 #include "motor.h"
+#include "Gyro.h"
 #include "Serial.h"
 #include "Delay.h"
 
@@ -134,54 +135,112 @@ void you_(uint32_t mm)
 	Delay_ms(5);
 }
 
-/* 右旋转（同步触发）*/
-void shun_yaw_(uint32_t deg)
+static uint32_t motor_centideg_to_pulse(int32_t centideg)
 {
-    uint32_t p = deg *PULSE_PER_360DEG/360u;
-    uint8_t cmd[13] = {0x00, 0xFD, 0x00, MOTOR_SPEED_H, MOTOR_SPEED_L, (uint8_t)MOTOR_ACCEL, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6B};
+    int64_t num = (int64_t)centideg * (int64_t)PULSE_PER_360DEG;
 
+    if (num >= 0)
+        return (uint32_t)((num + 18000) / 36000);   /* 四舍五入 */
+    else
+        return (uint32_t)((-num + 18000) / 36000);
+}
+
+// 细化旋转
+void motor_rotate_centideg(int32_t centideg)
+{
+    uint32_t p;
+    uint8_t  dir;
+    uint8_t  cmd[13] = {0x00, 0xFD, 0x00, MOTOR_SPEED_H, MOTOR_SPEED_L,
+                        (uint8_t)MOTOR_ACCEL, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x01, 0x6B};
+
+    if (centideg == 0) return;
+
+    if (centideg >= 0) { dir = 0x01; p = motor_centideg_to_pulse(centideg); }
+    else               { dir = 0x00; p = motor_centideg_to_pulse(-centideg); }
+
+    cmd[2] = dir;
     cmd[6] = (uint8_t)(p >> 24);
     cmd[7] = (uint8_t)(p >> 16);
     cmd[8] = (uint8_t)(p >> 8);
     cmd[9] = (uint8_t)p;
 
-    cmd[0] = 0x01; cmd[2] = 0x00;   /* FL */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x02; cmd[2] = 0x00;   /* FR */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x03; cmd[2] = 0x00;   /* RL */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x04; cmd[2] = 0x00;   /* RR */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-	
-    Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
-	Delay_ms(5);
+    cmd[0] = 0x01; Serial_SendArray(cmd, 13); Delay_ms(5);
+    cmd[0] = 0x02; Serial_SendArray(cmd, 13); Delay_ms(5);
+    cmd[0] = 0x03; Serial_SendArray(cmd, 13); Delay_ms(5);
+    cmd[0] = 0x04; Serial_SendArray(cmd, 13); Delay_ms(5);
+
+    Serial_SendByte(0x00); Serial_SendByte(0xFF);
+    Serial_SendByte(0x66); Serial_SendByte(0x6B);
+    Delay_ms(5);
 }
 
-/* 左旋转（同步触发）*/
-void ni_yaw_(uint32_t deg)
+/**
+ * @brief   陀螺仪比例转向：先执行目标增量，再按剩余误差的一半逐次修正。
+ * @param   target_delta    使用相对起始角度增量，单位 0.01 度，正（顺时针）负（逆时针）。
+ * @retval                  1 表示成功，0 表示失败。
+ * @note        
+ */
+u8 gyro_turn_pos_test(int32_t target_delta)
 {
-    uint32_t p = deg*PULSE_PER_360DEG/360u ;
-    uint8_t cmd[13] = {0x00, 0xFD, 0x00, MOTOR_SPEED_H, MOTOR_SPEED_L, (uint8_t)MOTOR_ACCEL, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6B};
+    const int32_t TOLERANCE = 10L;              // 到位容差 0.1 度
+    const uint8_t MAX_CORRECTIONS = 5u;         // 最多修正5次，不含首发命令
+    const int32_t MAX_CORRECTION_DEG = 30L;     // 修正时最大转 30 度
+    // start_yaw 表示进入时陀螺仪 yaw， 作为相对零点
+    // yaw 表示每次新样本的绝对yaw
+    int32_t start_yaw, yaw, relative_yaw, error, centideg;
+    uint32_t last_frame_count;
+    uint8_t correction_count = 0u;
+    uint8_t stable_count = 0u;                  // 连续进入容差的新样本数，达到 3 才算真正到位
+    uint8_t first_feedback = 1u;                // 单次检验标志
 
-    cmd[6] = (uint8_t)(p >> 24);
-    cmd[7] = (uint8_t)(p >> 16);
-    cmd[8] = (uint8_t)(p >> 8);
-    cmd[9] = (uint8_t)p;
+    if(!Gyro_GetYawCentiDegrees(&start_yaw)) return 0;      // 如果陀螺仪未接入，直接返回失败
+    last_frame_count = Gyro_FrameCount;                     // 记录最新的帧号，后面只接受更新的
 
-    cmd[0] = 0x01; cmd[2] = 0x01;   /* FL */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x02; cmd[2] = 0x01;   /* FR */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x03; cmd[2] = 0x01;   /* RL */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-    cmd[0] = 0x04; cmd[2] = 0x01;   /* RR */
-    Serial_SendArray(cmd, 13); Delay_ms(5);
-	
-    Serial_SendByte(0x00); Serial_SendByte(0xFF); Serial_SendByte(0x66); Serial_SendByte(0x6B);
-	Delay_ms(5);
-	
+    /* 先按目标方向执行一次完整位置命令。 */
+    motor_rotate_centideg(target_delta);
+
+    Delay_ms(50);
+    if(!judge()) return 0;
+
+    while(1){                                   // 离散的修正循环
+        if(!gyro_wait_new_sample(&last_frame_count, &yaw)) return 0;
+
+        relative_yaw = angle_wrap_180_centideg(yaw - start_yaw);          // relative_yaw - start_yaw 并 wrap 到 [-180,180) 表示实际已转相对角度
+        error = angle_wrap_180_centideg(target_delta - relative_yaw);     // 剩余误差，若 > 0 继续逆，若 < 0 继续顺
+        OLED_ShowString(3, 1, "DY:");
+        OLED_ShowSignedNum(3, 4, relative_yaw / 100L, 3);
+
+        if(error <= TOLERANCE && error >= -TOLERANCE){
+            if(++stable_count >= 3u) return 1;                  // 如果连续 3 个新样本都在容差内，判为真正到位
+            continue;
+        }
+        stable_count = 0u;
+
+        /* 单次检验，用于排查是否反了，可以做一个保护, 5 度的保护阈值。 */
+        if(first_feedback){
+            first_feedback = 0u;
+            if((target_delta > 0L && relative_yaw < -500L) ||
+               (target_delta < 0L && relative_yaw > 500L))
+                return 0;
+        }
+
+        if(correction_count >= MAX_CORRECTIONS) return 0;       // 修正次数用完仍然未进入容差，失败       
+
+        centideg = error / 2;
+
+        motor_rotate_centideg(centideg);
+
+        Delay_ms(50);
+        if(!judge()) return 0;
+        correction_count++;
+    }
 }
+
+
+/* 左右旋转；旧命令，后续停止使用（薄封装，还能用，但实际执行 motor_rotate_centideg ）*/
+void shun_yaw_(uint32_t deg) { motor_rotate_centideg(-(int32_t)(deg * 100u)); }
+void ni_yaw_(uint32_t deg)   { motor_rotate_centideg( (int32_t)(deg * 100u)); }
 
 /* 发送 F6 速度模式命令：[地址][F6][方向][速度H][速度L][加速度][同步][6B]。
  * 旋转仍使用 FL(1) 和 FR(2)，两个电机方向按现有旋转逻辑保持一致。
